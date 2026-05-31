@@ -1,0 +1,25 @@
+# ----- Secrets (NEVER commit) -----
+# Google Maps API key and other local secrets live here
+local.properties
+*.keystore
+*.jks
+secrets.properties
+
+# ----- Android / Gradle build artifacts -----
+.gradle/
+build/
+captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# ----- Android Studio / IntelliJ -----
+.idea/
+*.iml
+.DS_Store
+
+# ----- Misc -----
+*.log
