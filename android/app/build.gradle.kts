@@ -1,6 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Read the Google Maps API key from local.properties (git-ignored) so the secret
+// never gets committed. Falls back to a harmless placeholder if it's missing
+// (the build still succeeds; the map just won't render).
+val mapsApiKey: String = run {
+    val props = Properties()
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { props.load(it) }
+    }
+    props.getProperty("MAPS_API_KEY") ?: "DEFAULT_API_KEY"
 }
 
 android {
@@ -19,6 +33,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Makes ${MAPS_API_KEY} in AndroidManifest.xml resolve to the real key.
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {
@@ -48,6 +65,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+
+    // Google Maps (Compose)
+    implementation("com.google.maps.android:maps-compose:6.4.1")
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
