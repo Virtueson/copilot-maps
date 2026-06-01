@@ -26,3 +26,9 @@ captures/
 
 # Stray screenshots dropped at repo root during chat (real image assets live under app/src/main/res)
 /*.png
+
+# ----- Python backend -----
+backend/.venv/
+backend/.env
+__pycache__/
+.pytest_cache/
