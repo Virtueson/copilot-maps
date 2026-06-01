@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import get_planner
 from app.models import RoutePlanRequest, RoutePlanResponse
@@ -12,5 +13,8 @@ async def plan_routes(
     request: RoutePlanRequest,
     planner: RoutePlanner = Depends(get_planner),
 ) -> RoutePlanResponse:
-    routes = await planner.plan(request.origin, request.destination)
+    try:
+        routes = await planner.plan(request.origin, request.destination)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Route provider error: {exc}") from exc
     return RoutePlanResponse(routes=routes)
