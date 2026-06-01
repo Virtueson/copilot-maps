@@ -1,6 +1,13 @@
 from fastapi.testclient import TestClient
 
+from app.config import get_planner
 from app.main import app
+from app.planners.stub import StubRoutePlanner
+
+# Tests must always run against the stub planner, regardless of the local .env
+# (ROUTE_PLANNER may be "google" for real-device dev). Overriding the dependency
+# keeps tests deterministic and prevents live network calls to Google.
+app.dependency_overrides[get_planner] = lambda: StubRoutePlanner()
 
 client = TestClient(app)
 
