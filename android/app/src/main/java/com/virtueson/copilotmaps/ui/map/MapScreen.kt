@@ -50,6 +50,8 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.virtueson.copilotmaps.data.DefaultRoutesRepository
 import com.virtueson.copilotmaps.data.GeoPoint
+import com.virtueson.copilotmaps.data.TrafficSpeed
+import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.location.FusedLocationProvider
 import com.virtueson.copilotmaps.network.NetworkModule
 
@@ -146,14 +148,27 @@ private fun RoutingMap(
             if (routesState is RoutesState.Loaded) {
                 routesState.routes.forEach { route ->
                     val selected = route.id == routesState.selectedId
-                    Polyline(
-                        points = route.points.map { LatLng(it.lat, it.lng) },
-                        color = if (selected) Color(0xFF1A73E8) else Color(0xFF9AA0A6),
-                        width = if (selected) 18f else 9f,
-                        zIndex = if (selected) 2f else 1f,
-                        clickable = true,
-                        onClick = { onSelect(route.id) },
-                    )
+                    if (selected) {
+                        buildTrafficSegments(route.points, route.trafficIntervals).forEach { segment ->
+                            Polyline(
+                                points = segment.points.map { LatLng(it.lat, it.lng) },
+                                color = trafficColor(segment.speed),
+                                width = 18f,
+                                zIndex = 2f,
+                                clickable = true,
+                                onClick = { onSelect(route.id) },
+                            )
+                        }
+                    } else {
+                        Polyline(
+                            points = route.points.map { LatLng(it.lat, it.lng) },
+                            color = Color(0xFF9AA0A6),
+                            width = 9f,
+                            zIndex = 1f,
+                            clickable = true,
+                            onClick = { onSelect(route.id) },
+                        )
+                    }
                 }
             }
         }
@@ -233,6 +248,13 @@ private fun formatDuration(seconds: Int): String {
 
 private fun formatDistance(meters: Int): String =
     if (meters >= 1000) String.format("%.1f km", meters / 1000.0) else "$meters m"
+
+private fun trafficColor(speed: TrafficSpeed): Color = when (speed) {
+    TrafficSpeed.NORMAL -> Color(0xFF34A853)   // green
+    TrafficSpeed.SLOW -> Color(0xFFFBBC04)     // amber
+    TrafficSpeed.JAM -> Color(0xFFEA4335)      // red
+    TrafficSpeed.UNKNOWN -> Color(0xFF1A73E8)  // blue (fallback = old selected color)
+}
 
 @Composable
 private fun Centered(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
