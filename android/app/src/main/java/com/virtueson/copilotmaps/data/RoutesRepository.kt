@@ -9,6 +9,13 @@ interface RoutesRepository {
     suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint): RoutesResult
 }
 
+private fun String.toTrafficSpeed(): TrafficSpeed = when (this) {
+    "NORMAL" -> TrafficSpeed.NORMAL
+    "SLOW" -> TrafficSpeed.SLOW
+    "TRAFFIC_JAM" -> TrafficSpeed.JAM
+    else -> TrafficSpeed.UNKNOWN
+}
+
 class DefaultRoutesRepository(
     private val api: RoutesApi,
 ) : RoutesRepository {
@@ -27,6 +34,9 @@ class DefaultRoutesRepository(
                     distanceMeters = dto.distanceMeters,
                     durationSeconds = dto.durationSeconds,
                     points = PolyUtil.decode(dto.polyline).map { GeoPoint(it.latitude, it.longitude) },
+                    trafficIntervals = dto.trafficIntervals.map {
+                        TrafficInterval(it.startIndex, it.endIndex, it.speed.toTrafficSpeed())
+                    },
                 )
             }
             if (routes.isEmpty()) {
