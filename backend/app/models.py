@@ -28,3 +28,23 @@ class RoutePlanRequest(BaseModel):
 
 class RoutePlanResponse(BaseModel):
     routes: list[Route]
+
+
+class Place(BaseModel):
+    id: str
+    name: str
+    lat: float
+    lng: float
+    address: str | None = None
+    rating: float | None = None
+
+
+class PlacesSearchRequest(BaseModel):
+    query: str
+    origin: LatLng
+    polyline: str | None = None
+
+
+class PlacesSearchResponse(BaseModel):
+    mode: str
+    places: list[Place]
