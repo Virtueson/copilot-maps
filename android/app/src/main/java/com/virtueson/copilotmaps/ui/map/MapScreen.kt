@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -48,8 +50,10 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import com.virtueson.copilotmaps.data.DefaultPlacesRepository
 import com.virtueson.copilotmaps.data.DefaultRoutesRepository
 import com.virtueson.copilotmaps.data.GeoPoint
+import com.virtueson.copilotmaps.data.Place
 import com.virtueson.copilotmaps.data.TrafficSpeed
 import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.location.FusedLocationProvider
@@ -66,8 +70,12 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val routeViewModel: RouteViewModel = viewModel(
         factory = RouteViewModelFactory(DefaultRoutesRepository(NetworkModule.routesApi))
     )
+    val placesViewModel: PlacesViewModel = viewModel(
+        factory = PlacesViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
+    )
     val locationState by mapViewModel.uiState.collectAsStateWithLifecycle()
     val routesState by routeViewModel.state.collectAsStateWithLifecycle()
+    val placesState by placesViewModel.state.collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -107,13 +115,24 @@ fun MapScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        is MapUiState.Located -> RoutingMap(
-            modifier = modifier,
-            origin = GeoPoint(loc.latitude, loc.longitude),
-            routesState = routesState,
-            onPlan = { dest -> routeViewModel.planRoutes(GeoPoint(loc.latitude, loc.longitude), dest) },
-            onSelect = routeViewModel::selectRoute,
-        )
+        is MapUiState.Located -> {
+            val origin = GeoPoint(loc.latitude, loc.longitude)
+            RoutingMap(
+                modifier = modifier,
+                origin = origin,
+                routesState = routesState,
+                placesState = placesState,
+                onPlan = { dest -> routeViewModel.planRoutes(origin, dest) },
+                onSelect = routeViewModel::selectRoute,
+                onSearchPlaces = { category ->
+                    val polyline = (routesState as? RoutesState.Loaded)?.let { loaded ->
+                        loaded.routes.firstOrNull { it.id == loaded.selectedId }?.polyline
+                    }
+                    placesViewModel.search(category, origin, polyline)
+                },
+                onClearPlaces = placesViewModel::clear,
+            )
+        }
     }
 }
 
@@ -122,8 +141,11 @@ private fun RoutingMap(
     modifier: Modifier,
     origin: GeoPoint,
     routesState: RoutesState,
+    placesState: PlacesState,
     onPlan: (GeoPoint) -> Unit,
     onSelect: (String) -> Unit,
+    onSearchPlaces: (PlaceCategory) -> Unit,
+    onClearPlaces: () -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val originLatLng = LatLng(origin.lat, origin.lng)
@@ -171,8 +193,55 @@ private fun RoutingMap(
                     }
                 }
             }
+            if (placesState is PlacesState.Loaded) {
+                placesState.places.forEach { place ->
+                    Marker(
+                        state = rememberMarkerState(
+                            key = place.id,
+                            position = LatLng(place.location.lat, place.location.lng),
+                        ),
+                        title = place.name,
+                        snippet = placeSnippet(place),
+                        icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE),
+                    )
+                }
+            }
         }
 
+        // Top overlay: category buttons + status/notes.
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Surface(tonalElevation = 3.dp) {
+                Row(
+                    modifier = Modifier.padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Button(onClick = { onSearchPlaces(PlaceCategory.GAS) }) { Text("Gas") }
+                    Button(onClick = { onSearchPlaces(PlaceCategory.FOOD) }) { Text("Food") }
+                    OutlinedButton(onClick = onClearPlaces) { Text("Clear") }
+                }
+            }
+            val banner: String? = when {
+                placesState is PlacesState.Loading -> "Searching…"
+                placesState is PlacesState.Error -> placesState.message
+                placesState is PlacesState.Loaded && placesState.places.isEmpty() -> "No places found nearby."
+                placesState is PlacesState.Loaded && placesState.fellBackToNearby -> "None on your route — showing nearest."
+                else -> null
+            }
+            if (banner != null) {
+                Spacer(Modifier.height(6.dp))
+                Surface(tonalElevation = 3.dp) {
+                    Text(banner, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center)
+                }
+            }
+        }
+
+        // Bottom overlay: route ETA cards / status.
         when (routesState) {
             is RoutesState.Idle -> BottomBar { Text("Long-press the map to set a destination") }
             is RoutesState.Loading -> BottomBar { Text("Finding routes…") }
@@ -192,6 +261,13 @@ private fun RoutingMap(
             )
         }
     }
+}
+
+private fun placeSnippet(place: Place): String {
+    val parts = mutableListOf<String>()
+    place.rating?.let { parts.add("★ $it") }
+    place.address?.let { parts.add(it) }
+    return parts.joinToString(" · ")
 }
 
 @Composable
@@ -250,10 +326,10 @@ private fun formatDistance(meters: Int): String =
     if (meters >= 1000) String.format("%.1f km", meters / 1000.0) else "$meters m"
 
 private fun trafficColor(speed: TrafficSpeed): Color = when (speed) {
-    TrafficSpeed.NORMAL -> Color(0xFF34A853)   // green
-    TrafficSpeed.SLOW -> Color(0xFFFBBC04)     // amber
-    TrafficSpeed.JAM -> Color(0xFFEA4335)      // red
-    TrafficSpeed.UNKNOWN -> Color(0xFF1A73E8)  // blue (fallback = old selected color)
+    TrafficSpeed.NORMAL -> Color(0xFF34A853)
+    TrafficSpeed.SLOW -> Color(0xFFFBBC04)
+    TrafficSpeed.JAM -> Color(0xFFEA4335)
+    TrafficSpeed.UNKNOWN -> Color(0xFF1A73E8)
 }
 
 @Composable
