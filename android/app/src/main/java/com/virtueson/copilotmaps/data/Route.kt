@@ -7,6 +7,7 @@ data class Route(
     val distanceMeters: Int,
     val durationSeconds: Int,
     val points: List<GeoPoint>,
+    val polyline: String = "",
     val trafficIntervals: List<TrafficInterval> = emptyList(),
 )
 

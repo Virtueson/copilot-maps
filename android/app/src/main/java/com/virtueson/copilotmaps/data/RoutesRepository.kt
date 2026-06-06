@@ -34,6 +34,7 @@ class DefaultRoutesRepository(
                     distanceMeters = dto.distanceMeters,
                     durationSeconds = dto.durationSeconds,
                     points = PolyUtil.decode(dto.polyline).map { GeoPoint(it.latitude, it.longitude) },
+                    polyline = dto.polyline,
                     trafficIntervals = dto.trafficIntervals.map {
                         TrafficInterval(it.startIndex, it.endIndex, it.speed.toTrafficSpeed())
                     },
