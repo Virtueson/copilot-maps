@@ -11,7 +11,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 object NetworkModule {
     private const val BASE_URL = "http://localhost:8000/"
 
-    val routesApi: RoutesApi by lazy {
+    private val retrofit: Retrofit by lazy {
         val moshi = Moshi.Builder()
             .add(KotlinJsonAdapterFactory())
             .build()
@@ -28,6 +28,8 @@ object NetworkModule {
             .client(client)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
-            .create(RoutesApi::class.java)
     }
+
+    val routesApi: RoutesApi by lazy { retrofit.create(RoutesApi::class.java) }
+    val placesApi: PlacesApi by lazy { retrofit.create(PlacesApi::class.java) }
 }
