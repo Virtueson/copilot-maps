@@ -2,7 +2,7 @@ import math
 
 import polyline
 
-from app.models import LatLng, Route
+from app.models import LatLng, Route, TrafficInterval
 
 # ~40 km/h average urban speed, in metres/second.
 _ASSUMED_SPEED_MPS = 11.0
@@ -29,8 +29,21 @@ def _offset_midpoint(a: LatLng, b: LatLng, perp_offset_deg: float) -> LatLng:
     return LatLng(lat=mid_lat + perp_lat * perp_offset_deg, lng=mid_lng + perp_lng * perp_offset_deg)
 
 
+def _densify(a: LatLng, mid: LatLng, b: LatLng) -> list[LatLng]:
+    """7 points: a at index 0, mid at 3, b at 6 (so 3 clean traffic intervals fit)."""
+    points: list[LatLng] = []
+    for i in range(3):
+        t = i / 3
+        points.append(LatLng(lat=a.lat + (mid.lat - a.lat) * t, lng=a.lng + (mid.lng - a.lng) * t))
+    for i in range(3):
+        t = i / 3
+        points.append(LatLng(lat=mid.lat + (b.lat - mid.lat) * t, lng=mid.lng + (b.lng - mid.lng) * t))
+    points.append(b)
+    return points
+
+
 class StubRoutePlanner:
-    """Offline planner: 3 fake routes that actually connect origin to destination."""
+    """Offline planner: 3 fake routes that connect origin to destination, with fake traffic."""
 
     _VARIANTS = [
         (0.0, "Direct route"),
@@ -42,8 +55,14 @@ class StubRoutePlanner:
         routes: list[Route] = []
         for i, (offset, summary) in enumerate(self._VARIANTS):
             mid = _offset_midpoint(origin, destination, offset)
-            points = [(origin.lat, origin.lng), (mid.lat, mid.lng), (destination.lat, destination.lng)]
-            encoded = polyline.encode(points)
+            points = _densify(origin, mid, destination)
+            last = len(points) - 1  # 6
+            encoded = polyline.encode([(p.lat, p.lng) for p in points])
+            intervals = [
+                TrafficInterval(start_index=0, end_index=2, speed="NORMAL"),
+                TrafficInterval(start_index=2, end_index=4, speed="SLOW"),
+                TrafficInterval(start_index=4, end_index=last, speed="TRAFFIC_JAM"),
+            ]
             leg_m = _haversine_m(origin, mid) + _haversine_m(mid, destination)
             routes.append(
                 Route(
@@ -52,6 +71,7 @@ class StubRoutePlanner:
                     distance_meters=int(leg_m),
                     duration_seconds=int(leg_m / _ASSUMED_SPEED_MPS),
                     polyline=encoded,
+                    traffic_intervals=intervals,
                 )
             )
         return routes
