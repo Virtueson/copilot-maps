@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import places, routes
+from app.routers import copilot, places, routes
 
 app = FastAPI(title="Copilot Maps Backend")
 
@@ -15,6 +15,7 @@ app.add_middleware(
 
 app.include_router(routes.router)
 app.include_router(places.router)
+app.include_router(copilot.router)
 
 
 @app.get("/health")

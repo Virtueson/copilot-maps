@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     google_routes_api_key: str = ""
     places_provider: str = "stub"
     google_places_api_key: str = ""
+    copilot_provider: str = "stub"
+    anthropic_api_key: str = ""
 
 
 @lru_cache
@@ -37,3 +39,17 @@ def get_places_provider() -> PlacesProvider:
 
         return GooglePlacesProvider(api_key=settings.google_places_api_key)
     return StubPlacesProvider()
+
+
+def get_copilot():
+    settings = get_settings()
+    if settings.copilot_provider == "anthropic":
+        from app.copilot.anthropic_agent import AnthropicCopilot
+
+        return AnthropicCopilot(
+            api_key=settings.anthropic_api_key,
+            places_provider=get_places_provider(),
+        )
+    from app.copilot.stub import StubCopilot
+
+    return StubCopilot()
