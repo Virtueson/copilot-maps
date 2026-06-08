@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.config import get_places_provider
 from app.models import PlacesSearchRequest, PlacesSearchResponse
 from app.places.base import PlacesProvider
+from app.places.search import search_with_fallback
 
 router = APIRouter()
 
@@ -13,15 +14,10 @@ async def search_places(
     request: PlacesSearchRequest,
     provider: PlacesProvider = Depends(get_places_provider),
 ) -> PlacesSearchResponse:
-    places = []
-    mode = "nearby"
     try:
-        if request.polyline:
-            places = await provider.along_route(request.query, request.polyline)
-            mode = "along_route"
-        if not places:
-            places = await provider.nearby(request.query, request.origin)
-            mode = "nearby"
+        mode, places = await search_with_fallback(
+            provider, request.query, request.origin, request.polyline
+        )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Places provider error: {exc}") from exc
     return PlacesSearchResponse(mode=mode, places=places)
