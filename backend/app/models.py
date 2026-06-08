@@ -48,3 +48,31 @@ class PlacesSearchRequest(BaseModel):
 class PlacesSearchResponse(BaseModel):
     mode: str
     places: list[Place]
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class RouteSummary(BaseModel):
+    summary: str
+    distance_meters: int
+    duration_seconds: int
+    traffic: str  # "light" | "moderate" | "heavy"
+    selected: bool
+
+
+class CopilotContext(BaseModel):
+    origin: LatLng
+    selected_route_polyline: str | None = None
+    routes: list[RouteSummary] = []
+
+
+class CopilotAskRequest(BaseModel):
+    messages: list[ChatMessage]
+    context: CopilotContext
+
+
+class CopilotAskResponse(BaseModel):
+    reply: str
