@@ -32,4 +32,5 @@ object NetworkModule {
 
     val routesApi: RoutesApi by lazy { retrofit.create(RoutesApi::class.java) }
     val placesApi: PlacesApi by lazy { retrofit.create(PlacesApi::class.java) }
+    val copilotApi: CopilotApi by lazy { retrofit.create(CopilotApi::class.java) }
 }
