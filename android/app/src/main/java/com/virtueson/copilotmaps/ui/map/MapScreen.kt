@@ -11,15 +11,20 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,14 +55,23 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import com.virtueson.copilotmaps.data.DefaultCopilotRepository
 import com.virtueson.copilotmaps.data.DefaultPlacesRepository
 import com.virtueson.copilotmaps.data.DefaultRoutesRepository
 import com.virtueson.copilotmaps.data.GeoPoint
 import com.virtueson.copilotmaps.data.Place
+import com.virtueson.copilotmaps.data.Route
+import com.virtueson.copilotmaps.data.RouteSummary
+import com.virtueson.copilotmaps.data.TrafficInterval
 import com.virtueson.copilotmaps.data.TrafficSpeed
+import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.location.FusedLocationProvider
 import com.virtueson.copilotmaps.network.NetworkModule
+import com.virtueson.copilotmaps.ui.copilot.CopilotChatSheet
+import com.virtueson.copilotmaps.ui.copilot.CopilotUiState
+import com.virtueson.copilotmaps.ui.copilot.CopilotViewModel
+import com.virtueson.copilotmaps.ui.copilot.CopilotViewModelFactory
 
 @Composable
 fun MapScreen(modifier: Modifier = Modifier) {
@@ -73,9 +87,13 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val placesViewModel: PlacesViewModel = viewModel(
         factory = PlacesViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
     )
+    val copilotViewModel: CopilotViewModel = viewModel(
+        factory = CopilotViewModelFactory(DefaultCopilotRepository(NetworkModule.copilotApi))
+    )
     val locationState by mapViewModel.uiState.collectAsStateWithLifecycle()
     val routesState by routeViewModel.state.collectAsStateWithLifecycle()
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
+    val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -122,6 +140,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 origin = origin,
                 routesState = routesState,
                 placesState = placesState,
+                copilotState = copilotState,
                 onPlan = { dest -> routeViewModel.planRoutes(origin, dest) },
                 onSelect = routeViewModel::selectRoute,
                 onSearchPlaces = { category ->
@@ -131,6 +150,9 @@ fun MapScreen(modifier: Modifier = Modifier) {
                     placesViewModel.search(category, origin, polyline)
                 },
                 onClearPlaces = placesViewModel::clear,
+                onSendCopilot = { text ->
+                    copilotViewModel.sendMessage(text, buildTripContext(origin, routesState))
+                },
             )
         }
     }
@@ -142,10 +164,12 @@ private fun RoutingMap(
     origin: GeoPoint,
     routesState: RoutesState,
     placesState: PlacesState,
+    copilotState: CopilotUiState,
     onPlan: (GeoPoint) -> Unit,
     onSelect: (String) -> Unit,
     onSearchPlaces: (PlaceCategory) -> Unit,
     onClearPlaces: () -> Unit,
+    onSendCopilot: (String) -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val originLatLng = LatLng(origin.lat, origin.lng)
@@ -212,6 +236,7 @@ private fun RoutingMap(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars)
                 .fillMaxWidth()
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -260,6 +285,23 @@ private fun RoutingMap(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
+
+        var showChat by remember { mutableStateOf(false) }
+        ExtendedFloatingActionButton(
+            onClick = { showChat = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(16.dp),
+        ) { Text("Copilot") }
+
+        if (showChat) {
+            CopilotChatSheet(
+                state = copilotState,
+                onSend = onSendCopilot,
+                onDismiss = { showChat = false },
+            )
+        }
     }
 }
 
@@ -275,6 +317,7 @@ private fun BoxScope.BottomBar(content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier
             .align(Alignment.BottomCenter)
+            .windowInsetsPadding(WindowInsets.navigationBars)
             .fillMaxWidth()
             .padding(12.dp),
         tonalElevation = 3.dp,
@@ -291,6 +334,7 @@ private fun RouteCards(
 ) {
     Row(
         modifier = modifier
+            .windowInsetsPadding(WindowInsets.navigationBars)
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(12.dp),
@@ -337,4 +381,27 @@ private fun Centered(modifier: Modifier = Modifier, content: @Composable () -> U
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         content()
     }
+}
+
+private fun buildTripContext(origin: GeoPoint, routesState: RoutesState): TripContext {
+    val loaded = routesState as? RoutesState.Loaded
+    val routes: List<Route> = loaded?.routes ?: emptyList()
+    val selectedId = loaded?.selectedId
+    val selectedPolyline = routes.firstOrNull { it.id == selectedId }?.polyline
+    val summaries = routes.map { r ->
+        RouteSummary(
+            summary = r.summary,
+            distanceMeters = r.distanceMeters,
+            durationSeconds = r.durationSeconds,
+            traffic = trafficLabel(r.trafficIntervals),
+            selected = r.id == selectedId,
+        )
+    }
+    return TripContext(origin, selectedPolyline, summaries)
+}
+
+private fun trafficLabel(intervals: List<TrafficInterval>): String = when {
+    intervals.any { it.speed == TrafficSpeed.JAM } -> "heavy"
+    intervals.any { it.speed == TrafficSpeed.SLOW } -> "moderate"
+    else -> "light"
 }
