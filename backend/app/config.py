@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     google_places_api_key: str = ""
     copilot_provider: str = "stub"
     anthropic_api_key: str = ""
+    # OpenAI-compatible provider (e.g. SumoPod). Swap models by changing model_name.
+    model_api: str = ""
+    model_base_url: str = "https://ai.sumopod.com/v1"
+    model_name: str = "deepseek-v4-flash"
 
 
 @lru_cache
@@ -48,6 +52,15 @@ def get_copilot():
 
         return AnthropicCopilot(
             api_key=settings.anthropic_api_key,
+            places_provider=get_places_provider(),
+        )
+    if settings.copilot_provider == "openai":
+        from app.copilot.openai_compat import OpenAICompatCopilot
+
+        return OpenAICompatCopilot(
+            api_key=settings.model_api,
+            base_url=settings.model_base_url,
+            model=settings.model_name,
             places_provider=get_places_provider(),
         )
     from app.copilot.stub import StubCopilot

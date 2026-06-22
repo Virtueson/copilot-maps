@@ -1,24 +1,29 @@
+from app.copilot.registry import Tool
 from app.models import CopilotContext, Place
 from app.places.base import PlacesProvider
 from app.places.search import search_with_fallback
 
+_SEARCH_PLACES_DESCRIPTION = (
+    "Find places such as gas stations, restaurants, ATMs, or any category on the "
+    "user's current route (or near them if no route is planned). Pass a natural "
+    "language query like 'gas station' or 'french restaurant'."
+)
+_SEARCH_PLACES_PARAMETERS = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "What to search for, e.g. 'gas station' or 'coffee'.",
+        }
+    },
+    "required": ["query"],
+}
+
+# Kept for backward compatibility / native-Anthropic schema shape.
 SEARCH_PLACES_TOOL = {
     "name": "search_places",
-    "description": (
-        "Find places such as gas stations, restaurants, ATMs, or any category on the "
-        "user's current route (or near them if no route is planned). Pass a natural "
-        "language query like 'gas station' or 'french restaurant'."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "What to search for, e.g. 'gas station' or 'coffee'.",
-            }
-        },
-        "required": ["query"],
-    },
+    "description": _SEARCH_PLACES_DESCRIPTION,
+    "input_schema": _SEARCH_PLACES_PARAMETERS,
 }
 
 
@@ -40,3 +45,27 @@ async def execute_search_places(
         places_provider, query, context.origin, context.selected_route_polyline
     )
     return _format_places(mode, places)
+
+
+def build_tools(places_provider: PlacesProvider) -> list[Tool]:
+    """Single registration point for every copilot tool.
+
+    To add a capability, write its executor and append one `Tool(...)` here; all
+    providers (OpenAI-compatible and Anthropic-native) pick it up automatically.
+    """
+
+    async def _search_places(args: dict, context: CopilotContext) -> str:
+        return await execute_search_places(
+            args.get("query", ""), context, places_provider
+        )
+
+    return [
+        Tool(
+            name="search_places",
+            description=_SEARCH_PLACES_DESCRIPTION,
+            parameters=_SEARCH_PLACES_PARAMETERS,
+            executor=_search_places,
+        ),
+        # Add future tools here, e.g.:
+        # Tool(name="get_weather", description=..., parameters=..., executor=_get_weather),
+    ]
