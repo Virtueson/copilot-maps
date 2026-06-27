@@ -7,6 +7,8 @@ import com.virtueson.copilotmaps.data.CopilotResult
 import com.virtueson.copilotmaps.data.GeoPoint
 import com.virtueson.copilotmaps.data.Role
 import com.virtueson.copilotmaps.data.TripContext
+import com.virtueson.copilotmaps.voice.FakeVoiceInput
+import com.virtueson.copilotmaps.voice.FakeVoiceOutput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -30,7 +32,10 @@ class CopilotViewModelTest {
 
     @Test
     fun `success appends user then assistant message`() = runTest {
-        val vm = CopilotViewModel(FakeCopilotRepository(CopilotResult.Success("Hi there")))
+        val vm = CopilotViewModel(
+            FakeCopilotRepository(CopilotResult.Success("Hi there")),
+            FakeVoiceInput(), FakeVoiceOutput(),
+        )
 
         vm.sendMessage("hello", ctx)
         advanceUntilIdle()
@@ -47,7 +52,10 @@ class CopilotViewModelTest {
 
     @Test
     fun `failure sets error and keeps only the user message`() = runTest {
-        val vm = CopilotViewModel(FakeCopilotRepository(CopilotResult.Failure("boom")))
+        val vm = CopilotViewModel(
+            FakeCopilotRepository(CopilotResult.Failure("boom")),
+            FakeVoiceInput(), FakeVoiceOutput(),
+        )
 
         vm.sendMessage("hello", ctx)
         advanceUntilIdle()

@@ -68,6 +68,8 @@ import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.location.FusedLocationProvider
 import com.virtueson.copilotmaps.network.NetworkModule
+import com.virtueson.copilotmaps.voice.AndroidVoiceInput
+import com.virtueson.copilotmaps.voice.AndroidVoiceOutput
 import com.virtueson.copilotmaps.ui.copilot.CopilotChatSheet
 import com.virtueson.copilotmaps.ui.copilot.CopilotUiState
 import com.virtueson.copilotmaps.ui.copilot.CopilotViewModel
@@ -87,13 +89,39 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val placesViewModel: PlacesViewModel = viewModel(
         factory = PlacesViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
     )
+    val voiceInput = remember { AndroidVoiceInput(context) }
+    val voiceOutput = remember { AndroidVoiceOutput(context) }
     val copilotViewModel: CopilotViewModel = viewModel(
-        factory = CopilotViewModelFactory(DefaultCopilotRepository(NetworkModule.copilotApi))
+        factory = CopilotViewModelFactory(
+            DefaultCopilotRepository(NetworkModule.copilotApi),
+            voiceInput,
+            voiceOutput,
+        )
     )
     val locationState by mapViewModel.uiState.collectAsStateWithLifecycle()
     val routesState by routeViewModel.state.collectAsStateWithLifecycle()
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
+
+    var pendingMicContext by remember { mutableStateOf<TripContext?>(null) }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val tripContext = pendingMicContext
+        pendingMicContext = null
+        if (granted && tripContext != null) copilotViewModel.onMicTapped(tripContext)
+    }
+    val handleMic: (TripContext) -> Unit = { tripContext ->
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            copilotViewModel.onMicTapped(tripContext)
+        } else {
+            pendingMicContext = tripContext
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -153,6 +181,8 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 onSendCopilot = { text ->
                     copilotViewModel.sendMessage(text, buildTripContext(origin, routesState))
                 },
+                onMicCopilot = { handleMic(buildTripContext(origin, routesState)) },
+                onToggleTts = copilotViewModel::setTtsEnabled,
             )
         }
     }
@@ -170,6 +200,8 @@ private fun RoutingMap(
     onSearchPlaces: (PlaceCategory) -> Unit,
     onClearPlaces: () -> Unit,
     onSendCopilot: (String) -> Unit,
+    onMicCopilot: () -> Unit,
+    onToggleTts: (Boolean) -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val originLatLng = LatLng(origin.lat, origin.lng)
@@ -299,6 +331,8 @@ private fun RoutingMap(
             CopilotChatSheet(
                 state = copilotState,
                 onSend = onSendCopilot,
+                onMic = onMicCopilot,
+                onToggleTts = onToggleTts,
                 onDismiss = { showChat = false },
             )
         }
