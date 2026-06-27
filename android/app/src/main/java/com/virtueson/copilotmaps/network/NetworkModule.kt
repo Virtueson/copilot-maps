@@ -6,6 +6,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.TimeUnit
 
 /** Single Retrofit instance for the app. Base URL works via `adb reverse`. */
 object NetworkModule {
@@ -19,8 +20,14 @@ object NetworkModule {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
+        // The /copilot/ask endpoint runs an agentic loop (LLM + tool calls), which can
+        // take far longer than OkHttp's 10s default. Give reads/writes generous headroom.
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(90, TimeUnit.SECONDS)
             .build()
 
         Retrofit.Builder()
