@@ -38,6 +38,14 @@ class DefaultRoutesRepository(
                     trafficIntervals = dto.trafficIntervals.map {
                         TrafficInterval(it.startIndex, it.endIndex, it.speed.toTrafficSpeed())
                     },
+                    steps = dto.steps.map {
+                        RouteStep(
+                            instruction = it.instruction,
+                            maneuver = it.maneuver,
+                            distanceMeters = it.distanceMeters,
+                            location = GeoPoint(it.location.lat, it.location.lng),
+                        )
+                    },
                 )
             }
             if (routes.isEmpty()) {

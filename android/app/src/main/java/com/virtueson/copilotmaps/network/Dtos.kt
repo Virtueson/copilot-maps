@@ -18,6 +18,13 @@ data class TrafficIntervalDto(
     val speed: String,
 )
 
+data class RouteStepDto(
+    val instruction: String,
+    val maneuver: String,
+    @Json(name = "distance_meters") val distanceMeters: Int,
+    val location: LatLngDto,
+)
+
 data class RouteDto(
     val id: String,
     val summary: String,
@@ -25,6 +32,7 @@ data class RouteDto(
     @Json(name = "duration_seconds") val durationSeconds: Int,
     val polyline: String,
     @Json(name = "traffic_intervals") val trafficIntervals: List<TrafficIntervalDto> = emptyList(),
+    @Json(name = "steps") val steps: List<RouteStepDto> = emptyList(),
 )
 
 data class RoutePlanResponseDto(
