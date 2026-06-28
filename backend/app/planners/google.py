@@ -1,12 +1,15 @@
 import httpx
 
-from app.models import LatLng, Route, TrafficInterval
+from app.models import LatLng, Route, RouteStep, TrafficInterval
 
 _COMPUTE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 _FIELD_MASK = (
     "routes.polyline.encodedPolyline,routes.duration,"
     "routes.distanceMeters,routes.description,"
-    "routes.travelAdvisory.speedReadingIntervals"
+    "routes.travelAdvisory.speedReadingIntervals,"
+    "routes.legs.steps.navigationInstruction,"
+    "routes.legs.steps.distanceMeters,"
+    "routes.legs.steps.startLocation"
 )
 
 
@@ -23,6 +26,26 @@ def _parse_intervals(item: dict) -> list[TrafficInterval]:
             )
         )
     return intervals
+
+
+def _parse_steps(item: dict) -> list[RouteStep]:
+    steps: list[RouteStep] = []
+    for leg in item.get("legs", []):
+        for s in leg.get("steps", []):
+            nav = s.get("navigationInstruction", {})
+            latlng = s.get("startLocation", {}).get("latLng", {})
+            steps.append(
+                RouteStep(
+                    instruction=nav.get("instructions", ""),
+                    maneuver=nav.get("maneuver", ""),
+                    distance_meters=int(s.get("distanceMeters", 0)),
+                    location=LatLng(
+                        lat=latlng.get("latitude", 0.0),
+                        lng=latlng.get("longitude", 0.0),
+                    ),
+                )
+            )
+    return steps
 
 
 class GoogleRoutePlanner:
@@ -59,6 +82,7 @@ class GoogleRoutePlanner:
                     duration_seconds=seconds,
                     polyline=item["polyline"]["encodedPolyline"],
                     traffic_intervals=_parse_intervals(item),
+                    steps=_parse_steps(item),
                 )
             )
         return routes
