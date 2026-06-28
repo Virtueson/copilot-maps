@@ -3,18 +3,25 @@ package com.virtueson.copilotmaps.ui.map
 import com.virtueson.copilotmaps.MainDispatcherRule
 import com.virtueson.copilotmaps.location.LocationProvider
 import com.virtueson.copilotmaps.location.LocationResult
+import com.virtueson.copilotmaps.location.LocationSample
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 private class FakeLocationProvider(
     private val result: LocationResult,
+    private val updates: Flow<LocationSample> = emptyFlow(),
 ) : LocationProvider {
     override suspend fun getCurrentLocation(): LocationResult = result
+    override fun locationUpdates(): Flow<LocationSample> = updates
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
