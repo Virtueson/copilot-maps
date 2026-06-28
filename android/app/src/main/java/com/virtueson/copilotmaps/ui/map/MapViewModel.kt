@@ -5,9 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.virtueson.copilotmaps.location.LocationProvider
 import com.virtueson.copilotmaps.location.LocationResult
+import com.virtueson.copilotmaps.location.LocationSample
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class MapViewModel(
@@ -16,6 +19,10 @@ class MapViewModel(
 
     private val _uiState = MutableStateFlow<MapUiState>(MapUiState.Loading)
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+    private val _location = MutableStateFlow<LocationSample?>(null)
+    val location: StateFlow<LocationSample?> = _location.asStateFlow()
+    private var locationJob: Job? = null
 
     /** Call once permission is known to be granted. */
     fun onPermissionGranted() {
@@ -27,6 +34,16 @@ class MapViewModel(
                 is LocationResult.Failure ->
                     MapUiState.Error(result.reason)
             }
+        }
+        startLocationUpdates()
+    }
+
+    private fun startLocationUpdates() {
+        locationJob?.cancel()
+        locationJob = viewModelScope.launch {
+            locationProvider.locationUpdates()
+                .catch { /* keep last position; stream errors are non-fatal */ }
+                .collect { _location.value = it }
         }
     }
 

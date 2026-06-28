@@ -62,4 +62,19 @@ class MapViewModelTest {
 
         assertTrue(vm.uiState.value is MapUiState.PermissionNeeded)
     }
+
+    @Test
+    fun `location stream updates the location state`() = runTest {
+        val s1 = LocationSample(1.0, 2.0, 90f, 5f)
+        val s2 = LocationSample(1.1, 2.1, 80f, 6f)
+        val vm = MapViewModel(
+            FakeLocationProvider(LocationResult.Success(1.0, 2.0), flowOf(s1, s2))
+        )
+
+        assertNull(vm.location.value)
+        vm.onPermissionGranted()
+        advanceUntilIdle()
+
+        assertEquals(s2, vm.location.value)
+    }
 }
