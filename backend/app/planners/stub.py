@@ -2,7 +2,7 @@ import math
 
 import polyline
 
-from app.models import LatLng, Route, TrafficInterval
+from app.models import LatLng, Route, RouteStep, TrafficInterval
 
 # ~40 km/h average urban speed, in metres/second.
 _ASSUMED_SPEED_MPS = 11.0
@@ -63,6 +63,26 @@ class StubRoutePlanner:
                 TrafficInterval(start_index=2, end_index=4, speed="SLOW"),
                 TrafficInterval(start_index=4, end_index=last, speed="TRAFFIC_JAM"),
             ]
+            steps = [
+                RouteStep(
+                    instruction="Head toward destination",
+                    maneuver="DEPART",
+                    distance_meters=int(_haversine_m(origin, mid)),
+                    location=points[0],
+                ),
+                RouteStep(
+                    instruction="Turn onto the main road",
+                    maneuver="TURN_RIGHT",
+                    distance_meters=int(_haversine_m(mid, destination)),
+                    location=points[3],
+                ),
+                RouteStep(
+                    instruction="Arrive at destination",
+                    maneuver="ARRIVE",
+                    distance_meters=0,
+                    location=points[last],
+                ),
+            ]
             leg_m = _haversine_m(origin, mid) + _haversine_m(mid, destination)
             routes.append(
                 Route(
@@ -72,6 +92,7 @@ class StubRoutePlanner:
                     duration_seconds=int(leg_m / _ASSUMED_SPEED_MPS),
                     polyline=encoded,
                     traffic_intervals=intervals,
+                    steps=steps,
                 )
             )
         return routes

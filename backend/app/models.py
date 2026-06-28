@@ -12,6 +12,13 @@ class TrafficInterval(BaseModel):
     speed: str
 
 
+class RouteStep(BaseModel):
+    instruction: str
+    maneuver: str
+    distance_meters: int
+    location: LatLng
+
+
 class Route(BaseModel):
     id: str
     summary: str
@@ -19,6 +26,7 @@ class Route(BaseModel):
     duration_seconds: int
     polyline: str
     traffic_intervals: list[TrafficInterval] = []
+    steps: list[RouteStep] = []
 
 
 class RoutePlanRequest(BaseModel):

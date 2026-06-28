@@ -37,3 +37,20 @@ def test_plan_returns_three_routes():
 def test_plan_rejects_malformed_body():
     resp = client.post("/routes/plan", json={"origin": {"lat": 1.0, "lng": 2.0}})
     assert resp.status_code == 422
+
+
+def test_plan_includes_turn_by_turn_steps():
+    body = {
+        "origin": {"lat": 1.2966, "lng": 103.7764},
+        "destination": {"lat": 1.3521, "lng": 103.8198},
+    }
+    resp = client.post("/routes/plan", json=body)
+    assert resp.status_code == 200
+    for route in resp.json()["routes"]:
+        steps = route["steps"]
+        assert len(steps) >= 2
+        assert steps[0]["maneuver"] == "DEPART"
+        assert steps[-1]["maneuver"] == "ARRIVE"
+        assert steps[0]["instruction"]
+        assert steps[0]["distance_meters"] >= 0
+        assert "lat" in steps[0]["location"] and "lng" in steps[0]["location"]
