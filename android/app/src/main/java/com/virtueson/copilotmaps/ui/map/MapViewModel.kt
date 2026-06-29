@@ -27,15 +27,19 @@ class MapViewModel(
     /** Call once permission is known to be granted. */
     fun onPermissionGranted() {
         _uiState.value = MapUiState.Loading
+        startLocationUpdates()
         viewModelScope.launch {
-            _uiState.value = when (val result = locationProvider.getCurrentLocation()) {
+            when (val result = locationProvider.getCurrentLocation()) {
                 is LocationResult.Success ->
-                    MapUiState.Located(result.latitude, result.longitude)
+                    if (_uiState.value !is MapUiState.Located) {
+                        _uiState.value = MapUiState.Located(result.latitude, result.longitude)
+                    }
                 is LocationResult.Failure ->
-                    MapUiState.Error(result.reason)
+                    if (_uiState.value !is MapUiState.Located) {
+                        _uiState.value = MapUiState.Error(result.reason)
+                    }
             }
         }
-        startLocationUpdates()
     }
 
     private fun startLocationUpdates() {
@@ -43,7 +47,13 @@ class MapViewModel(
         locationJob = viewModelScope.launch {
             locationProvider.locationUpdates()
                 .catch { /* keep last position; stream errors are non-fatal */ }
-                .collect { _location.value = it }
+                .collect { sample ->
+                    _location.value = sample
+                    // A live fix recovers the map even if the one-shot failed.
+                    if (_uiState.value !is MapUiState.Located) {
+                        _uiState.value = MapUiState.Located(sample.latitude, sample.longitude)
+                    }
+                }
         }
     }
 

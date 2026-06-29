@@ -64,6 +64,23 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `a stream fix recovers Located even when the one-shot fails`() = runTest {
+        val s = LocationSample(3.0, 4.0, null, null)
+        val vm = MapViewModel(
+            FakeLocationProvider(LocationResult.Failure("no fix"), flowOf(s))
+        )
+
+        vm.onPermissionGranted()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state is MapUiState.Located)
+        state as MapUiState.Located
+        assertEquals(3.0, state.latitude, 0.0)
+        assertEquals(4.0, state.longitude, 0.0)
+    }
+
+    @Test
     fun `location stream updates the location state`() = runTest {
         val s1 = LocationSample(1.0, 2.0, 90f, 5f)
         val s2 = LocationSample(1.1, 2.1, 80f, 6f)

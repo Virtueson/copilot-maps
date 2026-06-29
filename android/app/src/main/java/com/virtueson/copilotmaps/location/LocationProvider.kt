@@ -43,6 +43,7 @@ class FusedLocationProvider(
             val location = client
                 .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
                 .await()
+                ?: client.lastLocation.await()   // fall back to a cached fix
             if (location != null) {
                 LocationResult.Success(location.latitude, location.longitude)
             } else {
