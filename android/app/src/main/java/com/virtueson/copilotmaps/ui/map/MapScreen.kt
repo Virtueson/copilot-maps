@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,9 +46,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
@@ -67,6 +70,7 @@ import com.virtueson.copilotmaps.data.TrafficSpeed
 import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.location.FusedLocationProvider
+import com.virtueson.copilotmaps.location.LocationSample
 import com.virtueson.copilotmaps.network.NetworkModule
 import com.virtueson.copilotmaps.voice.AndroidVoiceInput
 import com.virtueson.copilotmaps.voice.AndroidVoiceOutput
@@ -102,6 +106,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val routesState by routeViewModel.state.collectAsStateWithLifecycle()
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
+    val locationSample by mapViewModel.location.collectAsStateWithLifecycle()
 
     var pendingMicContext by remember { mutableStateOf<TripContext?>(null) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -165,6 +170,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
             val origin = GeoPoint(loc.latitude, loc.longitude)
             RoutingMap(
                 modifier = modifier,
+                location = locationSample,
                 origin = origin,
                 routesState = routesState,
                 placesState = placesState,
@@ -191,6 +197,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun RoutingMap(
     modifier: Modifier,
+    location: LocationSample?,
     origin: GeoPoint,
     routesState: RoutesState,
     placesState: PlacesState,
@@ -204,9 +211,44 @@ private fun RoutingMap(
     onToggleTts: (Boolean) -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
+    val destinationMarkerState = rememberMarkerState()
+    LaunchedEffect(destination) {
+        destination?.let { destinationMarkerState.position = it }
+    }
     val originLatLng = LatLng(origin.lat, origin.lng)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(originLatLng, 15f)
+    }
+
+    var following by remember { mutableStateOf(true) }
+
+    // Disengage follow when the user pans the map by gesture.
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (cameraPositionState.isMoving &&
+            cameraPositionState.cameraMoveStartedReason == CameraMoveStartedReason.GESTURE
+        ) {
+            following = false
+        }
+    }
+
+    // While following, animate the camera to each new location in a heading-up driving view.
+    LaunchedEffect(location, following) {
+        val loc = location
+        if (following && loc != null) {
+            val target = CameraPosition.Builder()
+                .target(LatLng(loc.latitude, loc.longitude))
+                .zoom(17f)
+                .tilt(45f)
+                .bearing(loc.bearing ?: cameraPositionState.position.bearing)
+                .build()
+            try {
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newCameraPosition(target), 1000,
+                )
+            } catch (e: Exception) {
+                // Map not ready yet; the next sample will retry.
+            }
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -220,8 +262,8 @@ private fun RoutingMap(
                 onPlan(GeoPoint(latLng.latitude, latLng.longitude))
             },
         ) {
-            destination?.let { dest ->
-                Marker(state = rememberMarkerState(key = dest.toString(), position = dest), title = "Destination")
+            if (destination != null) {
+                Marker(state = destinationMarkerState, title = "Destination")
             }
             if (routesState is RoutesState.Loaded) {
                 routesState.routes.forEach { route ->
@@ -316,6 +358,16 @@ private fun RoutingMap(
                 onSelect = onSelect,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+        }
+
+        if (!following) {
+            FloatingActionButton(
+                onClick = { following = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(end = 16.dp, bottom = 88.dp),
+            ) { Text("◎") }
         }
 
         var showChat by remember { mutableStateOf(false) }
