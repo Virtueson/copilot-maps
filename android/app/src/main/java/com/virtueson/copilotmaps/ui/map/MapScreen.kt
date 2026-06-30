@@ -21,12 +21,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,6 +120,15 @@ fun MapScreen(modifier: Modifier = Modifier) {
 
     val navViewModel: NavViewModel = viewModel(factory = NavViewModelFactory())
     val navState by navViewModel.state.collectAsStateWithLifecycle()
+
+    var navVoiceEnabled by rememberSaveable { mutableStateOf(true) }
+
+    // Speak nav cues on the shared TTS engine, queued behind any copilot reply.
+    LaunchedEffect(Unit) {
+        navViewModel.announcements.collect { line ->
+            if (navVoiceEnabled) voiceOutput.speak(line, flush = false)
+        }
+    }
 
     // Feed live location into the nav session while navigating.
     LaunchedEffect(locationSample) {
@@ -207,6 +222,8 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 navState = navState,
                 onStartNav = { route -> navViewModel.start(route) },
                 onEndNav = navViewModel::end,
+                navVoiceEnabled = navVoiceEnabled,
+                onToggleNavVoice = { navVoiceEnabled = !navVoiceEnabled },
             )
         }
     }
@@ -230,6 +247,8 @@ private fun RoutingMap(
     navState: NavUiState,
     onStartNav: (Route) -> Unit,
     onEndNav: () -> Unit,
+    navVoiceEnabled: Boolean,
+    onToggleNavVoice: () -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val destinationMarkerState = rememberMarkerState()
@@ -395,7 +414,13 @@ private fun RoutingMap(
             }
         } else if (navState is NavUiState.Active) {
             NavBanner(navState, modifier = Modifier.align(Alignment.TopCenter))
-            NavBottomBar(navState, onEnd = onEndNav, modifier = Modifier.align(Alignment.BottomCenter))
+            NavBottomBar(
+                navState,
+                onEnd = onEndNav,
+                voiceEnabled = navVoiceEnabled,
+                onToggleVoice = onToggleNavVoice,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
 
         if (!following) {
@@ -539,7 +564,13 @@ private fun NavBanner(state: NavUiState.Active, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun NavBottomBar(state: NavUiState.Active, onEnd: () -> Unit, modifier: Modifier = Modifier) {
+private fun NavBottomBar(
+    state: NavUiState.Active,
+    onEnd: () -> Unit,
+    voiceEnabled: Boolean,
+    onToggleVoice: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Surface(
         modifier = modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
@@ -555,6 +586,12 @@ private fun NavBottomBar(state: NavUiState.Active, onEnd: () -> Unit, modifier: 
             Column {
                 Text("ETA ${formatClock(state.etaEpochSeconds)}")
                 Text("${formatDistance(state.remainingDistanceMeters)} left")
+            }
+            IconButton(onClick = onToggleVoice) {
+                Icon(
+                    imageVector = if (voiceEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                    contentDescription = if (voiceEnabled) "Mute turn voice" else "Unmute turn voice",
+                )
             }
             Button(onClick = onEnd) { Text("End") }
         }
