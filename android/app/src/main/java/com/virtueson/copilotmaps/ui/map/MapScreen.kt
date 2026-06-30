@@ -21,20 +21,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -587,11 +583,8 @@ private fun NavBottomBar(
                 Text("ETA ${formatClock(state.etaEpochSeconds)}")
                 Text("${formatDistance(state.remainingDistanceMeters)} left")
             }
-            IconButton(onClick = onToggleVoice) {
-                Icon(
-                    imageVector = if (voiceEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                    contentDescription = if (voiceEnabled) "Mute turn voice" else "Unmute turn voice",
-                )
+            TextButton(onClick = onToggleVoice) {
+                Text(if (voiceEnabled) "🔊" else "🔇")
             }
             Button(onClick = onEnd) { Text("End") }
         }
