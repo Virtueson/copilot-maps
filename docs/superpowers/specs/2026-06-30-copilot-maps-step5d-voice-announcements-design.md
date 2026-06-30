@@ -181,3 +181,18 @@ No backend changes (Step 5a already supplies `RouteStep.instruction`).
   nav-voice mute toggle.
 - Verified on the Pixel-class device: prepare + now + arrival spoken during a
   real drive/route; a copilot reply is not cut off by a turn cue.
+
+## Revision — I1 now-cue safety net (2026-06-30, post-build)
+
+The now cue (40 m) sits just above `navProgress`'s 30 m step-advance threshold,
+leaving only a ~10 m window for the cue to fire. At driving speed with sparse /
+laggy GPS, a single fix can jump that window, advancing past the turn so its
+"Turn left" confirmation is never spoken. Fix: `nextAnnouncement` gained a
+**safety net** evaluated after the arrived check and before the now/prepare
+checks — if the step index has advanced past a real turn (`i >= 2`) whose now
+cue never fired (`state.nowStep < i - 1`), it speaks that turn's `instruction`
+the moment we register reaching it, then marks `nowStep = i - 1` (fires once,
+never for the departure step, never stale after arrival). The reliable 300 m
+prepare cue still gives advance warning; the safety net guarantees the at-the-
+turn confirmation is spoken regardless of GPS spacing. Tested: a skipped-window
+case, the departure-advance no-cue case, and the post-arrival no-stale-cue case.
