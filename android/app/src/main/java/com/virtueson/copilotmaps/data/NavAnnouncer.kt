@@ -38,6 +38,17 @@ fun nextAnnouncement(
     }
 
     val i = progress.stepIndex
+
+    // Safety net: if a fast/laggy GPS fix advanced us past a real turn whose
+    // "now" cue never fired (the 30-40 m window was skipped), speak that turn's
+    // confirmation the moment we register reaching it -- guarantees every real
+    // maneuver is announced regardless of GPS spacing. `i >= 2` excludes the
+    // departure step (index 0); `nowStep` only increases, so `nowStep < i - 1`
+    // means the turn at i-1 was passed without being confirmed.
+    if (i >= 2 && state.nowStep < i - 1) {
+        return AnnouncerResult(state.copy(nowStep = i - 1), steps[i - 1].instruction)
+    }
+
     val step = steps.getOrNull(i) ?: return AnnouncerResult(state, null)
     val dist = progress.distanceToTurnMeters
 

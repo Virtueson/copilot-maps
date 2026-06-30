@@ -76,4 +76,32 @@ class NavAnnouncerTest {
         assertEquals("50 meters", formatDistance(47))
         assertEquals("1.2 kilometers", formatDistance(1234))
     }
+
+    @Test
+    fun `now cue fires on reaching the turn even if the 40m window was skipped`() {
+        // Prepared for step 1, but a fast/laggy GPS fix advances the index to 2
+        // without ever landing in the 30-40 m now-window for step 1.
+        val s = AnnouncerState(startedSpoken = true, preparedStep = 1, nowStep = -1)
+        val r1 = nextAnnouncement(steps, progress(2, 800), s)
+        assertEquals("Turn right onto Oak Ave", r1.utterance) // step 1 confirmation, fired late
+        val r2 = nextAnnouncement(steps, progress(2, 700), r1.state)
+        assertNull(r2.utterance) // does not refire
+    }
+
+    @Test
+    fun `advancing past the departure step does not speak a now cue`() {
+        val s = AnnouncerState(startedSpoken = true)
+        val r = nextAnnouncement(steps, progress(1, 280), s)
+        // step index 1 with no prior cues -> normal prepare cue, NOT a stray safety-net now cue
+        assertEquals("In 300 meters, Turn right onto Oak Ave", r.utterance)
+    }
+
+    @Test
+    fun `arrived does not trigger a stale safety-net cue afterward`() {
+        val s = AnnouncerState(startedSpoken = true, preparedStep = 2)
+        val r1 = nextAnnouncement(steps, progress(2, 10, arrived = true), s)
+        assertEquals("You have arrived.", r1.utterance)
+        val r2 = nextAnnouncement(steps, progress(2, 5, arrived = true), r1.state)
+        assertNull(r2.utterance) // arrival set nowStep to last; safety net must NOT fire step 1
+    }
 }
