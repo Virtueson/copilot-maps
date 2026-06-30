@@ -29,11 +29,13 @@ class FakeVoiceInput : VoiceInput {
 
 class FakeVoiceOutput : VoiceOutput {
     val spoken = mutableListOf<String>()
+    val flushFlags = mutableListOf<Boolean>()
     var stopped = false
     var shutdownCalled = false
 
-    override fun speak(text: String, onDone: () -> Unit) {
+    override fun speak(text: String, flush: Boolean, onDone: () -> Unit) {
         spoken += text
+        flushFlags += flush
         onDone()
     }
 

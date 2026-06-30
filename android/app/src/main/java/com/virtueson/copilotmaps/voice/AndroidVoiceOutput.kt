@@ -27,7 +27,7 @@ class AndroidVoiceOutput(context: Context) : VoiceOutput {
                 })
                 pending?.let { (text, cb) ->
                     pending = null
-                    speak(text, cb)
+                    speak(text, true, cb)
                 }
             }
         }
@@ -37,14 +37,15 @@ class AndroidVoiceOutput(context: Context) : VoiceOutput {
         utteranceId?.let { callbacks.remove(it) }?.invoke()
     }
 
-    override fun speak(text: String, onDone: () -> Unit) {
+    override fun speak(text: String, flush: Boolean, onDone: () -> Unit) {
         if (!ready) {
             pending = text to onDone
             return
         }
         val id = "u${counter++}"
         callbacks[id] = onDone
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+        val mode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        tts.speak(text, mode, null, id)
     }
 
     override fun stop() {
