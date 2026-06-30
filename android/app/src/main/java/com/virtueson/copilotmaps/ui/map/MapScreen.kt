@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,9 +41,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,6 +111,17 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
     val locationSample by mapViewModel.location.collectAsStateWithLifecycle()
+
+    val navViewModel: NavViewModel = viewModel(factory = NavViewModelFactory())
+    val navState by navViewModel.state.collectAsStateWithLifecycle()
+
+    // Feed live location into the nav session while navigating.
+    LaunchedEffect(locationSample) {
+        val s = locationSample
+        if (s != null && navState is NavUiState.Active) {
+            navViewModel.onLocation(GeoPoint(s.latitude, s.longitude))
+        }
+    }
 
     var pendingMicContext by remember { mutableStateOf<TripContext?>(null) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -189,6 +204,9 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 },
                 onMicCopilot = { handleMic(buildTripContext(origin, routesState)) },
                 onToggleTts = copilotViewModel::setTtsEnabled,
+                navState = navState,
+                onStartNav = { route -> navViewModel.start(route) },
+                onEndNav = navViewModel::end,
             )
         }
     }
@@ -209,6 +227,9 @@ private fun RoutingMap(
     onSendCopilot: (String) -> Unit,
     onMicCopilot: () -> Unit,
     onToggleTts: (Boolean) -> Unit,
+    navState: NavUiState,
+    onStartNav: (Route) -> Unit,
+    onEndNav: () -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val destinationMarkerState = rememberMarkerState()
@@ -221,6 +242,15 @@ private fun RoutingMap(
     }
 
     var following by remember { mutableStateOf(true) }
+
+    val navActive = navState is NavUiState.Active
+    LaunchedEffect(navActive) { if (navActive) following = true }
+
+    val view = LocalView.current
+    DisposableEffect(navActive) {
+        view.keepScreenOn = navActive
+        onDispose { view.keepScreenOn = false }
+    }
 
     // Disengage follow when the user pans the map by gesture.
     LaunchedEffect(cameraPositionState.isMoving) {
@@ -258,6 +288,8 @@ private fun RoutingMap(
             properties = MapProperties(isMyLocationEnabled = true),
             uiSettings = MapUiSettings(myLocationButtonEnabled = true),
             onMapLongClick = { latLng ->
+                // Setting a new destination cancels any active navigation.
+                if (navState is NavUiState.Active) onEndNav()
                 destination = latLng
                 onPlan(GeoPoint(latLng.latitude, latLng.longitude))
             },
@@ -306,58 +338,64 @@ private fun RoutingMap(
             }
         }
 
-        // Top overlay: category buttons + status/notes.
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Surface(tonalElevation = 3.dp) {
-                Row(
-                    modifier = Modifier.padding(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Button(onClick = { onSearchPlaces(PlaceCategory.GAS) }) { Text("Gas") }
-                    Button(onClick = { onSearchPlaces(PlaceCategory.FOOD) }) { Text("Food") }
-                    OutlinedButton(onClick = onClearPlaces) { Text("Clear") }
-                }
-            }
-            val banner: String? = when {
-                placesState is PlacesState.Loading -> "Searching…"
-                placesState is PlacesState.Error -> placesState.message
-                placesState is PlacesState.Loaded && placesState.places.isEmpty() -> "No places found nearby."
-                placesState is PlacesState.Loaded && placesState.fellBackToNearby -> "None on your route — showing nearest."
-                else -> null
-            }
-            if (banner != null) {
-                Spacer(Modifier.height(6.dp))
+        if (!navActive) {
+            // Top overlay: category buttons + status/notes.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Surface(tonalElevation = 3.dp) {
-                    Text(banner, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center)
+                    Row(
+                        modifier = Modifier.padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Button(onClick = { onSearchPlaces(PlaceCategory.GAS) }) { Text("Gas") }
+                        Button(onClick = { onSearchPlaces(PlaceCategory.FOOD) }) { Text("Food") }
+                        OutlinedButton(onClick = onClearPlaces) { Text("Clear") }
+                    }
                 }
-            }
-        }
-
-        // Bottom overlay: route ETA cards / status.
-        when (routesState) {
-            is RoutesState.Idle -> BottomBar { Text("Long-press the map to set a destination") }
-            is RoutesState.Loading -> BottomBar { Text("Finding routes…") }
-            is RoutesState.Error -> BottomBar {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(routesState.message, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { destination?.let { onPlan(GeoPoint(it.latitude, it.longitude)) } }) {
-                        Text("Retry")
+                val banner: String? = when {
+                    placesState is PlacesState.Loading -> "Searching…"
+                    placesState is PlacesState.Error -> placesState.message
+                    placesState is PlacesState.Loaded && placesState.places.isEmpty() -> "No places found nearby."
+                    placesState is PlacesState.Loaded && placesState.fellBackToNearby -> "None on your route — showing nearest."
+                    else -> null
+                }
+                if (banner != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Surface(tonalElevation = 3.dp) {
+                        Text(banner, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center)
                     }
                 }
             }
-            is RoutesState.Loaded -> RouteCards(
-                state = routesState,
-                onSelect = onSelect,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+
+            // Bottom overlay: route ETA cards / status.
+            when (routesState) {
+                is RoutesState.Idle -> BottomBar { Text("Long-press the map to set a destination") }
+                is RoutesState.Loading -> BottomBar { Text("Finding routes…") }
+                is RoutesState.Error -> BottomBar {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(routesState.message, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = { destination?.let { onPlan(GeoPoint(it.latitude, it.longitude)) } }) {
+                            Text("Retry")
+                        }
+                    }
+                }
+                is RoutesState.Loaded -> RouteCards(
+                    state = routesState,
+                    onSelect = onSelect,
+                    onStart = onStartNav,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+        } else if (navState is NavUiState.Active) {
+            NavBanner(navState, modifier = Modifier.align(Alignment.TopCenter))
+            NavBottomBar(navState, onEnd = onEndNav, modifier = Modifier.align(Alignment.BottomCenter))
         }
 
         if (!following) {
@@ -416,34 +454,47 @@ private fun BoxScope.BottomBar(content: @Composable () -> Unit) {
 private fun RouteCards(
     state: RoutesState.Loaded,
     onSelect: (String) -> Unit,
+    onStart: (Route) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Column(
         modifier = modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        state.routes.forEach { route ->
-            val selected = route.id == state.selectedId
-            Card(
-                onClick = { onSelect(route.id) },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (selected) Color(0xFFD2E3FC) else Color(0xFFF1F3F4)
-                ),
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(
-                        text = route.summary,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                    )
-                    Text(formatDuration(route.durationSeconds))
-                    Text(formatDistance(route.distanceMeters))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            state.routes.forEach { route ->
+                val selected = route.id == state.selectedId
+                Card(
+                    onClick = { onSelect(route.id) },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selected) Color(0xFFD2E3FC) else Color(0xFFF1F3F4)
+                    ),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            text = route.summary,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        Text(formatDuration(route.durationSeconds))
+                        Text(formatDistance(route.distanceMeters))
+                    }
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
+        val selectedRoute = state.routes.firstOrNull { it.id == state.selectedId }
+        Button(
+            onClick = { selectedRoute?.let(onStart) },
+            enabled = selectedRoute != null && selectedRoute.steps.isNotEmpty(),
+        ) { Text("Start") }
     }
 }
 
@@ -460,6 +511,68 @@ private fun trafficColor(speed: TrafficSpeed): Color = when (speed) {
     TrafficSpeed.SLOW -> Color(0xFFFBBC04)
     TrafficSpeed.JAM -> Color(0xFFEA4335)
     TrafficSpeed.UNKNOWN -> Color(0xFF1A73E8)
+}
+
+@Composable
+private fun NavBanner(state: NavUiState.Active, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .fillMaxWidth()
+            .padding(12.dp),
+        tonalElevation = 3.dp,
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(maneuverArrow(state.maneuver), fontSize = 28.sp)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (state.arrived) "You've arrived" else state.instruction,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (!state.arrived) {
+                    Text(formatDistance(state.distanceToTurnMeters))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavBottomBar(state: NavUiState.Active, onEnd: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .fillMaxWidth()
+            .padding(12.dp),
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text("ETA ${formatClock(state.etaEpochSeconds)}")
+                Text("${formatDistance(state.remainingDistanceMeters)} left")
+            }
+            Button(onClick = onEnd) { Text("End") }
+        }
+    }
+}
+
+private fun maneuverArrow(maneuver: String): String = when {
+    maneuver == "ARRIVE" -> "◎"
+    maneuver.contains("LEFT") -> "←"
+    maneuver.contains("RIGHT") -> "→"
+    maneuver.contains("UTURN") -> "↩"
+    maneuver.contains("MERGE") || maneuver.contains("RAMP") -> "↗"
+    else -> "↑"
+}
+
+private fun formatClock(epochSeconds: Long): String {
+    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(epochSeconds * 1000))
 }
 
 @Composable
