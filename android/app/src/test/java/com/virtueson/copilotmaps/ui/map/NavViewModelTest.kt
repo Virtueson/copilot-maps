@@ -87,8 +87,9 @@ class NavViewModelTest {
             vm.announcements.collect { lines.add(it) }
         }
 
-        vm.start(route(steps))                    // "Head"
-        vm.onLocation(GeoPoint(0.0, 0.0100001))   // ~1 m from step 1 -> now cue
+        vm.start(route(steps))                    // "Head"; heading to step 1
+        vm.onLocation(GeoPoint(0.0, 0.0000001))   // ~at step 0 -> advance to step 1, far from it (no cue)
+        vm.onLocation(GeoPoint(0.0, 0.0096900))   // ~34 m before step 1 (30 m < d < 40 m) -> now cue
 
         assertEquals("Turn left", lines.last())
     }

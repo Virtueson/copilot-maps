@@ -6,7 +6,6 @@ import com.virtueson.copilotmaps.data.AnnouncerState
 import com.virtueson.copilotmaps.data.GeoPoint
 import com.virtueson.copilotmaps.data.NavProgress
 import com.virtueson.copilotmaps.data.Route
-import com.virtueson.copilotmaps.data.haversineMeters
 import com.virtueson.copilotmaps.data.navProgress
 import com.virtueson.copilotmaps.data.nextAnnouncement
 import kotlinx.coroutines.channels.BufferOverflow
@@ -35,26 +34,8 @@ class NavViewModel(
     )
     val announcements: SharedFlow<String> = _announcements.asSharedFlow()
 
-    /**
-     * Find the nearest unannounced step by proximity and run the announcement decider.
-     * This avoids relying on navProgress's advance-through logic, which requires the
-     * user to physically pass each prior waypoint before looking ahead.
-     */
-    private fun announce(point: GeoPoint) {
+    private fun announce(progress: NavProgress) {
         val steps = route?.steps ?: return
-        if (steps.isEmpty()) return
-        val startFrom = (announcer.nowStep + 1).coerceAtLeast(0)
-        if (startFrom >= steps.size) return
-        var nearestIdx = startFrom
-        var nearestDist = haversineMeters(point, steps[startFrom].location).toInt()
-        for (i in (startFrom + 1) until steps.size) {
-            val d = haversineMeters(point, steps[i].location).toInt()
-            if (d < nearestDist) { nearestDist = d; nearestIdx = i }
-        }
-        var remaining = nearestDist
-        for (i in (nearestIdx + 1) until steps.size) remaining += steps[i].distanceMeters
-        val arrived = nearestIdx == steps.size - 1 && nearestDist < 30
-        val progress = NavProgress(nearestIdx, nearestDist, remaining, arrived)
         val result = nextAnnouncement(steps, progress, announcer)
         announcer = result.state
         result.utterance?.let { _announcements.tryEmit(it) }
@@ -74,7 +55,14 @@ class NavViewModel(
             arrived = false,
         )
         announcer = AnnouncerState()
-        announce(route.steps[0].location)
+        announce(
+            NavProgress(
+                stepIndex = 0,
+                distanceToTurnMeters = 0,
+                remainingDistanceMeters = route.distanceMeters,
+                arrived = false,
+            )
+        )
     }
 
     fun onLocation(point: GeoPoint) {
@@ -92,7 +80,7 @@ class NavViewModel(
             etaEpochSeconds = nowEpochSeconds() + (r.durationSeconds * fraction).toLong(),
             arrived = p.arrived,
         )
-        announce(point)
+        announce(p)
     }
 
     fun end() {
