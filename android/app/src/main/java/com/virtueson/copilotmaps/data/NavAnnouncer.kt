@@ -46,7 +46,8 @@ fun nextAnnouncement(
     // departure step (index 0); `nowStep` only increases, so `nowStep < i - 1`
     // means the turn at i-1 was passed without being confirmed.
     if (i >= 2 && state.nowStep < i - 1) {
-        return AnnouncerResult(state.copy(nowStep = i - 1), steps[i - 1].instruction)
+        val skipped = steps.getOrNull(i - 1) ?: return AnnouncerResult(state, null)
+        return AnnouncerResult(state.copy(nowStep = i - 1), skipped.instruction)
     }
 
     val step = steps.getOrNull(i) ?: return AnnouncerResult(state, null)
