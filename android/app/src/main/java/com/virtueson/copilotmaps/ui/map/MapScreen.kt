@@ -134,6 +134,31 @@ fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    var rerouteInFlight by remember { mutableStateOf(false) }
+
+    // A reroute was requested → re-plan from the current position to the destination.
+    LaunchedEffect(Unit) {
+        navViewModel.rerouteRequest.collect { dest ->
+            val here = locationSample?.let { GeoPoint(it.latitude, it.longitude) }
+            if (here == null) {
+                navViewModel.onRerouteResult(null) // can't locate → treat as failure
+            } else {
+                rerouteInFlight = true
+                routeViewModel.planRoutes(here, dest)
+            }
+        }
+    }
+
+    // Deliver the re-plan result back to the nav session (exactly once per reroute).
+    LaunchedEffect(routesState) {
+        if (!rerouteInFlight) return@LaunchedEffect
+        when (val s = routesState) {
+            is RoutesState.Loaded -> { rerouteInFlight = false; navViewModel.onRerouteResult(s.routes.firstOrNull()) }
+            is RoutesState.Error -> { rerouteInFlight = false; navViewModel.onRerouteResult(null) }
+            else -> {} // Idle/Loading: wait
+        }
+    }
+
     var pendingMicContext by remember { mutableStateOf<TripContext?>(null) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -548,10 +573,14 @@ private fun NavBanner(state: NavUiState.Active, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (state.arrived) "You've arrived" else state.instruction,
+                    when {
+                        state.rerouting -> "Rerouting…"
+                        state.arrived -> "You've arrived"
+                        else -> state.instruction
+                    },
                     fontWeight = FontWeight.Bold,
                 )
-                if (!state.arrived) {
+                if (!state.arrived && !state.rerouting) {
                     Text(formatDistance(state.distanceToTurnMeters))
                 }
             }
