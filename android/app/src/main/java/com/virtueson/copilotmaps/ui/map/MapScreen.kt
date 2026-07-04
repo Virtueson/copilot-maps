@@ -159,6 +159,11 @@ fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // A cancelled/ended nav must not receive a late reroute result.
+    LaunchedEffect(navState) {
+        if (navState !is NavUiState.Active) rerouteInFlight = false
+    }
+
     var pendingMicContext by remember { mutableStateOf<TripContext?>(null) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()

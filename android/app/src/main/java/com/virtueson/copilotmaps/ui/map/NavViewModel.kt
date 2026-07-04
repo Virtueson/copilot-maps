@@ -100,7 +100,7 @@ class NavViewModel(
         )
         announce(p)
 
-        if (!rerouting) {
+        if (!rerouting && !p.arrived) {
             val off = distanceToRouteMeters(point, r.points) > offRouteMeters
             offRouteCount = if (off) offRouteCount + 1 else 0
             if (offRouteCount >= offRouteFixes &&
@@ -119,6 +119,12 @@ class NavViewModel(
     /** Result of a reroute request: adopt [newRoute] and continue (silently, no
      *  departure cue), or announce failure and keep the current route. */
     fun onRerouteResult(newRoute: Route?) {
+        // Ignore a reroute result that arrives after navigation was cancelled —
+        // otherwise a stale in-flight reroute would silently re-activate nav.
+        if (_state.value !is NavUiState.Active) {
+            rerouting = false
+            return
+        }
         rerouting = false
         if (newRoute != null && newRoute.steps.isNotEmpty()) {
             route = newRoute

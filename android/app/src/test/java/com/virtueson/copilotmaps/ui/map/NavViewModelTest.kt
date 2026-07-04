@@ -180,4 +180,20 @@ class NavViewModelTest {
         vm.onLocation(off); vm.onLocation(off); vm.onLocation(off)
         assertEquals(1, reqs.size)
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `onRerouteResult is a no-op when navigation is inactive`() = runTest {
+        val vm = NavViewModel(nowEpochSeconds = { 1000L })
+        val lines = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.announcements.collect { lines.add(it) } }
+
+        vm.start(routeP(steps, linePts))
+        vm.end()                                    // navigation cancelled → Inactive
+        lines.clear()
+        vm.onRerouteResult(routeP(steps, linePts))  // a stale reroute result arrives late
+
+        assertTrue(vm.state.value is NavUiState.Inactive) // stays cancelled, not resurrected
+        assertTrue(lines.isEmpty())                       // no announcement
+    }
 }
