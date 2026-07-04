@@ -9,5 +9,6 @@ sealed interface NavUiState {
         val remainingDistanceMeters: Int,
         val etaEpochSeconds: Long,
         val arrived: Boolean,
+        val rerouting: Boolean = false,
     ) : NavUiState
 }

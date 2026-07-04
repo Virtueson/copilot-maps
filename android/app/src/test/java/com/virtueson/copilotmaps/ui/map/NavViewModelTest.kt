@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,6 +24,13 @@ private val steps = listOf(
     step("Head", "DEPART", 100, 0.0, 0.000),
     step("Turn left", "TURN_LEFT", 200, 0.0, 0.010),
     step("Arrive", "ARRIVE", 0, 0.0, 0.020),
+)
+
+// A route whose polyline runs east along the equator, matching `steps` (lng 0.000..0.020).
+private val linePts = listOf(GeoPoint(0.0, 0.000), GeoPoint(0.0, 0.020))
+private fun routeP(steps: List<RouteStep>, points: List<GeoPoint>) = Route(
+    id = "r0", summary = "Test", distanceMeters = 600, durationSeconds = 600,
+    points = points, polyline = "", trafficIntervals = emptyList(), steps = steps,
 )
 
 class NavViewModelTest {
@@ -92,5 +100,84 @@ class NavViewModelTest {
         vm.onLocation(GeoPoint(0.0, 0.0096900))   // ~34 m before step 1 (30 m < d < 40 m) -> now cue
 
         assertEquals("Turn left", lines.last())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `sustained off-route emits one reroute request and Rerouting`() = runTest {
+        val vm = NavViewModel(nowEpochSeconds = { 1000L })
+        val lines = mutableListOf<String>()
+        val reqs = mutableListOf<GeoPoint>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.announcements.collect { lines.add(it) } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.rerouteRequest.collect { reqs.add(it) } }
+
+        vm.start(routeP(steps, linePts))
+        val off = GeoPoint(0.0018, 0.005) // ~200 m north of the line
+        vm.onLocation(off); vm.onLocation(off); vm.onLocation(off)
+
+        assertEquals(1, reqs.size)
+        assertEquals(GeoPoint(0.0, 0.020), reqs.first()) // destination = last step location
+        assertTrue(lines.contains("Rerouting"))
+        assertTrue((vm.state.value as NavUiState.Active).rerouting)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `a single off-route fix does not trigger a reroute`() = runTest {
+        val vm = NavViewModel(nowEpochSeconds = { 1000L })
+        val reqs = mutableListOf<GeoPoint>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.rerouteRequest.collect { reqs.add(it) } }
+
+        vm.start(routeP(steps, linePts))
+        vm.onLocation(GeoPoint(0.0018, 0.005)) // off (1)
+        vm.onLocation(GeoPoint(0.0, 0.005))    // back on route → counter resets
+        vm.onLocation(GeoPoint(0.0018, 0.005)) // off (1 again)
+
+        assertTrue(reqs.isEmpty())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `onRerouteResult adopts the new route without a departure cue`() = runTest {
+        val vm = NavViewModel(nowEpochSeconds = { 1000L })
+        val lines = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.announcements.collect { lines.add(it) } }
+
+        vm.start(routeP(steps, linePts)) // emits "Head"
+        lines.clear()
+        val newSteps = listOf(
+            step("Continue onto Elm", "DEPART", 100, 0.0, 0.000),
+            step("Turn right", "TURN_RIGHT", 100, 0.0, 0.010),
+            step("Arrive", "ARRIVE", 0, 0.0, 0.020),
+        )
+        vm.onRerouteResult(routeP(newSteps, linePts))
+
+        assertFalse(lines.contains("Continue onto Elm")) // no departure cue on reroute
+        val s = vm.state.value as NavUiState.Active
+        assertEquals("Continue onto Elm", s.instruction)  // HUD shows the new route
+        assertFalse(s.rerouting)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `onRerouteResult null announces failure, keeps navigating, and backs off`() = runTest {
+        val vm = NavViewModel(nowEpochSeconds = { 1000L })
+        val lines = mutableListOf<String>()
+        val reqs = mutableListOf<GeoPoint>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.announcements.collect { lines.add(it) } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.rerouteRequest.collect { reqs.add(it) } }
+
+        vm.start(routeP(steps, linePts))
+        val off = GeoPoint(0.0018, 0.005)
+        vm.onLocation(off); vm.onLocation(off); vm.onLocation(off) // first reroute attempt
+        assertEquals(1, reqs.size)
+
+        vm.onRerouteResult(null)
+        assertTrue(lines.contains("Rerouting failed"))
+        assertFalse((vm.state.value as NavUiState.Active).rerouting)
+
+        // still off-route, but within the 10 s backoff (nowEpochSeconds fixed at 1000) → no new request
+        vm.onLocation(off); vm.onLocation(off); vm.onLocation(off)
+        assertEquals(1, reqs.size)
     }
 }
