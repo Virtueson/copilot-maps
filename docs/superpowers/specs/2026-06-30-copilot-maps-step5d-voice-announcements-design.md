@@ -196,3 +196,33 @@ never for the departure step, never stale after arrival). The reliable 300 m
 prepare cue still gives advance warning; the safety net guarantees the at-the-
 turn confirmation is spoken regardless of GPS spacing. Tested: a skipped-window
 case, the departure-advance no-cue case, and the post-arrival no-stale-cue case.
+
+## Revision — turn chaining for tightly-clustered turns (2026-06-30, post-build)
+
+Originally listed as out of scope ("then chained instructions"). Added because
+the safety net only recovers one skipped turn per GPS update, so a cluster of
+turns a few metres apart (roundabout exits, complex junctions) could still drop
+announcements at speed. Chaining folds a cluster into ONE spoken line delivered
+by the reliable 300 m prepare cue, so nothing is dropped even under GPS lag.
+
+**Detection is free from existing data:** `RouteStep.distanceMeters` is the
+distance from that maneuver to the next, so `steps[i].distanceMeters < chainMeters`
+means turn i+1 is within `chainMeters` of turn i — a cluster.
+
+**Behavior:**
+- When building the **prepare** cue and the **now** cue for step `i`, chain
+  forward: append `", then " + steps[j+1].instruction` while
+  `steps[j].distanceMeters < chainMeters`, up to `maxChain` turns total, and
+  stop before an `ARRIVE` step (the arrival cue stays separate).
+- `chainMeters = 40` (matches the now threshold), `maxChain = 3`
+  (e.g. "Turn left, then turn right, then turn left"); a 4th+ clustered turn
+  falls to the following cue.
+- The cue that fires marks every chained step announced (`preparedStep` /
+  `nowStep` set to the last chained index), so the folded turns don't re-announce
+  individually and the safety net won't re-fire them.
+- Prepare speaks "In 300 meters, <chain>"; now speaks "<chain>".
+- No cluster (large gaps) → chain is just the single instruction — fully
+  backward-compatible with the existing cues and tests.
+
+**Tests:** 2-turn cluster, 3-turn cluster, cap at 3 (4 clustered → 3 spoken),
+no-chain when gaps are large, don't chain into ARRIVE, prepare-cue chaining.

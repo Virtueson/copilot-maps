@@ -582,3 +582,179 @@ git commit -m "feat(app): speak nav cues + nav-voice mute toggle (Step 5d)"
 **Placeholder scan:** none — all code steps contain full code; the one judgment call (icon placement in `NavBottomBar`) is bounded with an explicit fallback.
 
 **Type consistency:** `nextAnnouncement` / `AnnouncerState` / `AnnouncerResult` / `formatDistance` signatures identical across Tasks 1 and 3. `speak(text, flush, onDone)` identical across Tasks 2 and 4 and the fake. `announcements: SharedFlow<String>` identical across Tasks 3 and 4. `NavProgress` constructor args (`stepIndex`, `distanceToTurnMeters`, `remainingDistanceMeters`, `arrived`) match `data/NavProgress.kt`.
+
+---
+
+## Task 5: Turn chaining for tightly-clustered turns (post-review enhancement, added 2026-06-30)
+
+Fold turns spaced `< chainMeters` apart into one spoken line
+("Turn left, then turn right") so a cluster is delivered by the reliable 300 m
+prepare cue and never dropped under GPS lag. Uses `RouteStep.distanceMeters`
+(distance from a maneuver to the next) to detect clusters — no coordinates
+needed. `chainMeters = 40`, `maxChain = 3`, stops before an `ARRIVE` step.
+Pure change to `NavAnnouncer.nextAnnouncement`; NavViewModel/MapScreen unchanged.
+
+**Files:**
+- Modify: `android/app/src/main/java/com/virtueson/copilotmaps/data/NavAnnouncer.kt`
+- Test: `android/app/src/test/java/com/virtueson/copilotmaps/data/NavAnnouncerTest.kt`
+
+**Interfaces:**
+- `nextAnnouncement` gains two params: `chainMeters: Int = 40, maxChain: Int = 3`.
+- Dedup comparisons change from `!= i` to `< i` (preparedStep/nowStep are
+  monotonic; after chaining they hold the last chained index, which is `> i`,
+  so `!= i` would wrongly re-fire — `< i` is correct and preserves single-step
+  behavior).
+
+- [ ] **Step 1: Write the failing tests** — add to `NavAnnouncerTest.kt`
+
+Add two fixtures + six tests inside the existing class (keep everything else):
+
+```kotlin
+    // Chaining fixtures: location is irrelevant here (chaining reads distanceMeters
+    // and we pass NavProgress directly), so a dummy point is fine.
+    private fun turn(instruction: String, gapToNext: Int) =
+        RouteStep(instruction = instruction, maneuver = "TURN", distanceMeters = gapToNext, location = GeoPoint(0.0, 0.0))
+    private fun arrive() =
+        RouteStep(instruction = "Arrive at destination", maneuver = "ARRIVE", distanceMeters = 0, location = GeoPoint(0.0, 0.0))
+
+    @Test
+    fun `now cue chains two turns spaced under 40m`() {
+        val steps = listOf(turn("Depart", 10), turn("Turn left", 10), turn("Turn right", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("Turn left, then Turn right", r.utterance)
+    }
+
+    @Test
+    fun `now cue chains at most three turns`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 10), turn("C", 10), turn("D", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A, then B, then C", r.utterance) // capped at 3; D not included
+    }
+
+    @Test
+    fun `now cue does not chain when the next turn is far`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 500), turn("B", 10), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A", r.utterance)
+    }
+
+    @Test
+    fun `chain stops before the arrive step`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A", r.utterance) // arrive is not chained in
+    }
+
+    @Test
+    fun `prepare cue chains the cluster`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 280), AnnouncerState(startedSpoken = true))
+        assertEquals("In 300 meters, A, then B", r.utterance)
+    }
+
+    @Test
+    fun `chained now cue marks all folded turns announced`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 500), arrive())
+        val r1 = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A, then B", r1.utterance)
+        // advancing onto the folded step 2 must NOT re-announce it
+        val r2 = nextAnnouncement(steps, progress(2, 30), r1.state)
+        assertNull(r2.utterance)
+    }
+```
+
+- [ ] **Step 2: Run to verify they FAIL**
+
+`.\gradlew.bat testDebugUnitTest --console=plain --tests "com.virtueson.copilotmaps.data.NavAnnouncerTest"`
+Expected: the chaining tests fail (no chaining yet; e.g. `expected "Turn left, then Turn right" but was "Turn left"`).
+
+- [ ] **Step 3: Implement** — replace the whole `fun nextAnnouncement(...)` and add the helper above it, in `NavAnnouncer.kt`:
+
+```kotlin
+private data class Chain(val text: String, val lastIndex: Int)
+
+/**
+ * Fold a run of turns spaced < [chainMeters] apart (using each step's
+ * `distanceMeters` = distance to the next maneuver) into one spoken line —
+ * "Turn left, then turn right" — up to [maxChain] turns, stopping before an
+ * ARRIVE step. Returns the joined text and the last folded step index.
+ */
+private fun chainFrom(steps: List<RouteStep>, i: Int, chainMeters: Int, maxChain: Int): Chain {
+    val sb = StringBuilder(steps[i].instruction)
+    var j = i
+    var count = 1
+    while (count < maxChain && j < steps.size - 1 && steps[j].distanceMeters < chainMeters) {
+        val next = steps[j + 1]
+        if (next.maneuver == "ARRIVE") break
+        sb.append(", then ").append(next.instruction)
+        j++
+        count++
+    }
+    return Chain(sb.toString(), j)
+}
+
+fun nextAnnouncement(
+    steps: List<RouteStep>,
+    progress: NavProgress,
+    state: AnnouncerState,
+    prepareMeters: Int = 300,
+    nowMeters: Int = 40,
+    chainMeters: Int = 40,
+    maxChain: Int = 3,
+): AnnouncerResult {
+    if (steps.isEmpty()) return AnnouncerResult(state, null)
+
+    if (!state.startedSpoken) {
+        return AnnouncerResult(state.copy(startedSpoken = true), steps[0].instruction)
+    }
+
+    if (progress.arrived && !state.arrivedSpoken) {
+        val last = steps.size - 1
+        return AnnouncerResult(
+            state.copy(arrivedSpoken = true, nowStep = last, preparedStep = last),
+            "You have arrived.",
+        )
+    }
+
+    val i = progress.stepIndex
+
+    // Safety net: if a fast/laggy GPS fix advanced us past a real turn whose
+    // "now" cue never fired, speak that turn's confirmation on reaching it.
+    if (i >= 2 && state.nowStep < i - 1) {
+        val skipped = steps.getOrNull(i - 1) ?: return AnnouncerResult(state, null)
+        return AnnouncerResult(state.copy(nowStep = i - 1), skipped.instruction)
+    }
+
+    steps.getOrNull(i) ?: return AnnouncerResult(state, null)
+    val dist = progress.distanceToTurnMeters
+
+    if (dist < nowMeters && state.nowStep < i) {
+        val chain = chainFrom(steps, i, chainMeters, maxChain)
+        // Mark every folded turn announced so they don't re-fire individually
+        // and the safety net won't re-announce them.
+        return AnnouncerResult(state.copy(nowStep = chain.lastIndex, preparedStep = chain.lastIndex), chain.text)
+    }
+
+    if (dist < prepareMeters && state.preparedStep < i) {
+        val chain = chainFrom(steps, i, chainMeters, maxChain)
+        return AnnouncerResult(
+            state.copy(preparedStep = chain.lastIndex),
+            "In ${formatDistance(dist)}, ${chain.text}",
+        )
+    }
+
+    return AnnouncerResult(state, null)
+}
+```
+
+- [ ] **Step 4: Run tests — all green**
+
+`.\gradlew.bat testDebugUnitTest --console=plain --tests "com.virtueson.copilotmaps.data.NavAnnouncerTest"` → all pass (10 existing + 6 new = 16).
+Then full suite: `.\gradlew.bat testDebugUnitTest --console=plain` → BUILD SUCCESSFUL (NavViewModelTest must still pass — the `!= i` → `< i` change is behavior-preserving for single steps).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add "android/app/src/main/java/com/virtueson/copilotmaps/data/NavAnnouncer.kt" "android/app/src/test/java/com/virtueson/copilotmaps/data/NavAnnouncerTest.kt"
+git commit -m "feat(app): chain tightly-clustered turns into one cue (Step 5d)"
+```
