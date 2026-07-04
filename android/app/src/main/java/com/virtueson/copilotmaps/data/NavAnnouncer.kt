@@ -11,6 +11,28 @@ data class AnnouncerState(
 /** New announcer state plus an optional line to speak this update. */
 data class AnnouncerResult(val state: AnnouncerState, val utterance: String?)
 
+private data class Chain(val text: String, val lastIndex: Int)
+
+/**
+ * Fold a run of turns spaced < [chainMeters] apart (using each step's
+ * `distanceMeters` = distance to the next maneuver) into one spoken line —
+ * "Turn left, then turn right" — up to [maxChain] turns, stopping before an
+ * ARRIVE step. Returns the joined text and the last folded step index.
+ */
+private fun chainFrom(steps: List<RouteStep>, i: Int, chainMeters: Int, maxChain: Int): Chain {
+    val sb = StringBuilder(steps[i].instruction)
+    var j = i
+    var count = 1
+    while (count < maxChain && j < steps.size - 1 && steps[j].distanceMeters < chainMeters) {
+        val next = steps[j + 1]
+        if (next.maneuver == "ARRIVE") break
+        sb.append(", then ").append(next.instruction)
+        j++
+        count++
+    }
+    return Chain(sb.toString(), j)
+}
+
 /**
  * Decide the next thing to say, given current [progress]. At most one line per
  * call; the next location update picks up any remaining cue. Pure — no Android,
@@ -22,6 +44,8 @@ fun nextAnnouncement(
     state: AnnouncerState,
     prepareMeters: Int = 300,
     nowMeters: Int = 40,
+    chainMeters: Int = 40,
+    maxChain: Int = 3,
 ): AnnouncerResult {
     if (steps.isEmpty()) return AnnouncerResult(state, null)
 
@@ -40,29 +64,27 @@ fun nextAnnouncement(
     val i = progress.stepIndex
 
     // Safety net: if a fast/laggy GPS fix advanced us past a real turn whose
-    // "now" cue never fired (the 30-40 m window was skipped), speak that turn's
-    // confirmation the moment we register reaching it -- guarantees every real
-    // maneuver is announced regardless of GPS spacing. `i >= 2` excludes the
-    // departure step (index 0); `nowStep` only increases, so `nowStep < i - 1`
-    // means the turn at i-1 was passed without being confirmed.
+    // "now" cue never fired, speak that turn's confirmation on reaching it.
     if (i >= 2 && state.nowStep < i - 1) {
         val skipped = steps.getOrNull(i - 1) ?: return AnnouncerResult(state, null)
         return AnnouncerResult(state.copy(nowStep = i - 1), skipped.instruction)
     }
 
-    val step = steps.getOrNull(i) ?: return AnnouncerResult(state, null)
+    steps.getOrNull(i) ?: return AnnouncerResult(state, null)
     val dist = progress.distanceToTurnMeters
 
-    if (dist < nowMeters && state.nowStep != i) {
-        // Mark prepare done too, so a fast jump inside the now-radius never
-        // back-fires a stale prepare cue for the same step.
-        return AnnouncerResult(state.copy(nowStep = i, preparedStep = i), step.instruction)
+    if (dist < nowMeters && state.nowStep < i) {
+        val chain = chainFrom(steps, i, chainMeters, maxChain)
+        // Mark every folded turn announced so they don't re-fire individually
+        // and the safety net won't re-announce them.
+        return AnnouncerResult(state.copy(nowStep = chain.lastIndex, preparedStep = chain.lastIndex), chain.text)
     }
 
-    if (dist < prepareMeters && state.preparedStep != i) {
+    if (dist < prepareMeters && state.preparedStep < i) {
+        val chain = chainFrom(steps, i, chainMeters, maxChain)
         return AnnouncerResult(
-            state.copy(preparedStep = i),
-            "In ${formatDistance(dist)}, ${step.instruction}",
+            state.copy(preparedStep = chain.lastIndex),
+            "In ${formatDistance(dist)}, ${chain.text}",
         )
     }
 

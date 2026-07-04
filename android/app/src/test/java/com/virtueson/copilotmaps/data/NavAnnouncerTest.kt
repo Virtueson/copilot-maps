@@ -16,6 +16,13 @@ private val steps = listOf(
 private fun progress(index: Int, distToTurn: Int, arrived: Boolean = false) =
     NavProgress(stepIndex = index, distanceToTurnMeters = distToTurn, remainingDistanceMeters = distToTurn, arrived = arrived)
 
+// Chaining fixtures: location is irrelevant here (chaining reads distanceMeters
+// and we pass NavProgress directly), so a dummy point is fine.
+private fun turn(instruction: String, gapToNext: Int) =
+    RouteStep(instruction = instruction, maneuver = "TURN", distanceMeters = gapToNext, location = GeoPoint(0.0, 0.0))
+private fun arrive() =
+    RouteStep(instruction = "Arrive at destination", maneuver = "ARRIVE", distanceMeters = 0, location = GeoPoint(0.0, 0.0))
+
 class NavAnnouncerTest {
 
     @Test
@@ -103,5 +110,50 @@ class NavAnnouncerTest {
         assertEquals("You have arrived.", r1.utterance)
         val r2 = nextAnnouncement(steps, progress(2, 5, arrived = true), r1.state)
         assertNull(r2.utterance) // arrival set nowStep to last; safety net must NOT fire step 1
+    }
+
+    @Test
+    fun `now cue chains two turns spaced under 40m`() {
+        val steps = listOf(turn("Depart", 10), turn("Turn left", 10), turn("Turn right", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("Turn left, then Turn right", r.utterance)
+    }
+
+    @Test
+    fun `now cue chains at most three turns`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 10), turn("C", 10), turn("D", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A, then B, then C", r.utterance) // capped at 3; D not included
+    }
+
+    @Test
+    fun `now cue does not chain when the next turn is far`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 500), turn("B", 10), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A", r.utterance)
+    }
+
+    @Test
+    fun `chain stops before the arrive step`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), arrive())
+        val r = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A", r.utterance) // arrive is not chained in
+    }
+
+    @Test
+    fun `prepare cue chains the cluster`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 500), arrive())
+        val r = nextAnnouncement(steps, progress(1, 280), AnnouncerState(startedSpoken = true))
+        assertEquals("In 300 meters, A, then B", r.utterance)
+    }
+
+    @Test
+    fun `chained now cue marks all folded turns announced`() {
+        val steps = listOf(turn("Depart", 10), turn("A", 10), turn("B", 500), arrive())
+        val r1 = nextAnnouncement(steps, progress(1, 30), AnnouncerState(startedSpoken = true))
+        assertEquals("A, then B", r1.utterance)
+        // advancing onto the folded step 2 must NOT re-announce it
+        val r2 = nextAnnouncement(steps, progress(2, 30), r1.state)
+        assertNull(r2.utterance)
     }
 }
