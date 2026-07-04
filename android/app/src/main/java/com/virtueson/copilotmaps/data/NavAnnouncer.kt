@@ -64,7 +64,10 @@ fun nextAnnouncement(
     val i = progress.stepIndex
 
     // Safety net: if a fast/laggy GPS fix advanced us past a real turn whose
-    // "now" cue never fired, speak that turn's confirmation on reaching it.
+    // "now" cue never fired (the 30-40 m window was skipped), speak that turn's
+    // confirmation the moment we register reaching it. `i >= 2` excludes the
+    // departure step (index 0); `nowStep` only increases, so `nowStep < i - 1`
+    // means the turn at i-1 was passed without being confirmed.
     if (i >= 2 && state.nowStep < i - 1) {
         val skipped = steps.getOrNull(i - 1) ?: return AnnouncerResult(state, null)
         return AnnouncerResult(state.copy(nowStep = i - 1), skipped.instruction)
