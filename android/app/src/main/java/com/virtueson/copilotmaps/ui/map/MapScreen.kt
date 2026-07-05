@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,19 +16,26 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +66,7 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
@@ -75,6 +86,7 @@ import com.virtueson.copilotmaps.data.TrafficInterval
 import com.virtueson.copilotmaps.data.TrafficSpeed
 import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.data.buildTrafficSegments
+import com.virtueson.copilotmaps.data.haversineMeters
 import com.virtueson.copilotmaps.location.FusedLocationProvider
 import com.virtueson.copilotmaps.location.LocationSample
 import com.virtueson.copilotmaps.network.NetworkModule
@@ -84,6 +96,7 @@ import com.virtueson.copilotmaps.ui.copilot.CopilotChatSheet
 import com.virtueson.copilotmaps.ui.copilot.CopilotUiState
 import com.virtueson.copilotmaps.ui.copilot.CopilotViewModel
 import com.virtueson.copilotmaps.ui.copilot.CopilotViewModelFactory
+import kotlinx.coroutines.launch
 
 @Composable
 fun MapScreen(modifier: Modifier = Modifier) {
@@ -99,6 +112,9 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val placesViewModel: PlacesViewModel = viewModel(
         factory = PlacesViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
     )
+    val searchViewModel: SearchViewModel = viewModel(
+        factory = SearchViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
+    )
     val voiceInput = remember { AndroidVoiceInput(context) }
     val voiceOutput = remember { AndroidVoiceOutput(context) }
     val copilotViewModel: CopilotViewModel = viewModel(
@@ -111,6 +127,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val locationState by mapViewModel.uiState.collectAsStateWithLifecycle()
     val routesState by routeViewModel.state.collectAsStateWithLifecycle()
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
+    val searchState by searchViewModel.state.collectAsStateWithLifecycle()
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
     val locationSample by mapViewModel.location.collectAsStateWithLifecycle()
 
@@ -250,6 +267,10 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 onEndNav = navViewModel::end,
                 navVoiceEnabled = navVoiceEnabled,
                 onToggleNavVoice = { navVoiceEnabled = !navVoiceEnabled },
+                searchState = searchState,
+                onSearchQueryChange = searchViewModel::onQueryChange,
+                onSearchSubmit = { o -> searchViewModel.submit(o) },
+                onClearSearch = searchViewModel::clear,
             )
         }
     }
@@ -275,6 +296,10 @@ private fun RoutingMap(
     onEndNav: () -> Unit,
     navVoiceEnabled: Boolean,
     onToggleNavVoice: () -> Unit,
+    searchState: SearchUiState,
+    onSearchQueryChange: (String) -> Unit,
+    onSearchSubmit: (GeoPoint) -> Unit,
+    onClearSearch: () -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val destinationMarkerState = rememberMarkerState()
@@ -287,6 +312,7 @@ private fun RoutingMap(
     }
 
     var following by remember { mutableStateOf(true) }
+    val searchScope = rememberCoroutineScope()
 
     val navActive = navState is NavUiState.Active
     LaunchedEffect(navActive) { if (navActive) following = true }
@@ -477,6 +503,79 @@ private fun RoutingMap(
                 onDismiss = { showChat = false },
             )
         }
+
+        if (!navActive) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = searchState.query,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search a place") },
+                    leadingIcon = { Text("🔍") },
+                    trailingIcon = {
+                        if (searchState.query.isNotEmpty()) {
+                            TextButton(onClick = onClearSearch) { Text("✕") }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearchSubmit(origin) }),
+                )
+
+                if (searchState.loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+                }
+
+                when {
+                    searchState.error != null -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(searchState.error)
+                            TextButton(onClick = { onSearchSubmit(origin) }) { Text("Retry") }
+                        }
+                    }
+                    searchState.searched && searchState.results.isEmpty() && !searchState.loading ->
+                        Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Text("No places found", Modifier.padding(12.dp))
+                        }
+                    searchState.results.isNotEmpty() -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                            items(searchState.results, key = { it.id }) { place ->
+                                SearchResultRow(
+                                    place = place,
+                                    distanceMeters = haversineMeters(origin, place.location).toInt(),
+                                    onClick = {
+                                        following = false
+                                        val dest = LatLng(place.location.lat, place.location.lng)
+                                        destination = dest
+                                        onPlan(place.location)
+                                        onClearSearch()
+                                        searchScope.launch {
+                                            val bounds = LatLngBounds.builder()
+                                                .include(LatLng(origin.lat, origin.lng))
+                                                .include(dest)
+                                                .build()
+                                            try {
+                                                cameraPositionState.animate(
+                                                    CameraUpdateFactory.newLatLngBounds(bounds, 120), 1000,
+                                                )
+                                            } catch (e: Exception) {
+                                                // map not ready; ignore
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -622,6 +721,26 @@ private fun NavBottomBar(
             }
             Button(onClick = onEnd) { Text("End") }
         }
+    }
+}
+
+@Composable
+private fun SearchResultRow(place: Place, distanceMeters: Int, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+    ) {
+        Text(place.name, fontWeight = FontWeight.Bold)
+        val bits = buildList {
+            place.rating?.let { add("★$it") }
+            priceSymbol(place.priceLevel).takeIf { it.isNotEmpty() }?.let { add(it) }
+            place.openNow?.let { add(if (it) "Open now" else "Closed") }
+            add(formatDistance(distanceMeters))
+        }
+        Text(bits.joinToString(" · "))
+        place.address?.let { Text(it, fontSize = 12.sp) }
     }
 }
 

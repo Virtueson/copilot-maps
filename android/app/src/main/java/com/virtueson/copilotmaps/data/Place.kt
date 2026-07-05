@@ -6,6 +6,8 @@ data class Place(
     val location: GeoPoint,
     val address: String?,
     val rating: Double?,
+    val priceLevel: String? = null,
+    val openNow: Boolean? = null,
 )
 
 sealed interface PlacesResult {

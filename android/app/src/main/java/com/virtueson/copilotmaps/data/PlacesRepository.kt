@@ -27,6 +27,8 @@ class DefaultPlacesRepository(
                     location = GeoPoint(dto.lat, dto.lng),
                     address = dto.address,
                     rating = dto.rating,
+                    priceLevel = dto.priceLevel,
+                    openNow = dto.openNow,
                 )
             }
             PlacesResult.Success(places, response.mode)
