@@ -26,6 +26,8 @@ captures/
 
 # Stray screenshots dropped at repo root during chat (real image assets live under app/src/main/res)
 /*.png
+/*.jpg
+/*.jpeg
 
 # ----- Python backend -----
 backend/.venv/

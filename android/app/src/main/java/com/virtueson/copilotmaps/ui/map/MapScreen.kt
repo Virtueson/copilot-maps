@@ -318,6 +318,7 @@ private fun RoutingMap(
     var following by remember { mutableStateOf(true) }
     val searchScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    var showChat by remember { mutableStateOf(false) }
 
     val navActive = navState is NavUiState.Active
     LaunchedEffect(navActive) { if (navActive) following = true }
@@ -523,7 +524,13 @@ private fun RoutingMap(
 
             // Bottom overlay: route ETA cards / status.
             when (routesState) {
-                is RoutesState.Idle -> BottomBar { Text("Long-press the map to set a destination") }
+                is RoutesState.Idle -> Button(
+                    onClick = { showChat = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(16.dp),
+                ) { Text("Copilot") }
                 is RoutesState.Loading -> BottomBar { Text("Finding routes…") }
                 is RoutesState.Error -> BottomBar {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -542,6 +549,7 @@ private fun RoutingMap(
                         destination = null
                         onCancelRoute()
                     },
+                    onCopilot = { showChat = true },
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -552,6 +560,7 @@ private fun RoutingMap(
                 onEnd = onEndNav,
                 voiceEnabled = navVoiceEnabled,
                 onToggleVoice = onToggleNavVoice,
+                onCopilot = { showChat = true },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -560,20 +569,10 @@ private fun RoutingMap(
             FloatingActionButton(
                 onClick = { following = true },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(end = 16.dp, bottom = 88.dp),
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
             ) { Text("◎") }
         }
-
-        var showChat by remember { mutableStateOf(false) }
-        ExtendedFloatingActionButton(
-            onClick = { showChat = true },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(16.dp),
-        ) { Text("Copilot") }
 
         if (showChat) {
             CopilotChatSheet(
@@ -615,6 +614,7 @@ private fun RouteCards(
     onSelect: (String) -> Unit,
     onStart: (Route) -> Unit,
     onCancel: () -> Unit,
+    onCopilot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -652,11 +652,12 @@ private fun RouteCards(
         Spacer(Modifier.height(8.dp))
         val selectedRoute = state.routes.firstOrNull { it.id == state.selectedId }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCancel) { Text("Cancel") }
+            Button(onClick = onCancel) { Text("Cancel") }
             Button(
                 onClick = { selectedRoute?.let(onStart) },
                 enabled = selectedRoute != null && selectedRoute.steps.isNotEmpty(),
             ) { Text("Start") }
+            Button(onClick = onCopilot) { Text("Copilot") }
         }
     }
 }
@@ -711,6 +712,7 @@ private fun NavBottomBar(
     onEnd: () -> Unit,
     voiceEnabled: Boolean,
     onToggleVoice: () -> Unit,
+    onCopilot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -732,7 +734,8 @@ private fun NavBottomBar(
             TextButton(onClick = onToggleVoice) {
                 Text(if (voiceEnabled) "🔊" else "🔇")
             }
-            Button(onClick = onEnd) { Text("End") }
+            TextButton(onClick = onCopilot) { Text("Copilot") }
+            Button(onClick = onEnd) { Text("Cancel") }
         }
     }
 }
