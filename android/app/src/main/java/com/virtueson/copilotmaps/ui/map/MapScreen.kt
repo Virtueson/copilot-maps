@@ -32,6 +32,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -77,10 +78,12 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import com.virtueson.copilotmaps.data.AppLanguage
 import com.virtueson.copilotmaps.data.DefaultCopilotRepository
 import com.virtueson.copilotmaps.data.DefaultPlacesRepository
 import com.virtueson.copilotmaps.data.DefaultRoutesRepository
 import com.virtueson.copilotmaps.data.GeoPoint
+import com.virtueson.copilotmaps.data.LanguageSettings
 import com.virtueson.copilotmaps.data.Place
 import com.virtueson.copilotmaps.data.Route
 import com.virtueson.copilotmaps.data.RouteSummary
@@ -89,6 +92,7 @@ import com.virtueson.copilotmaps.data.TrafficSpeed
 import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.data.buildTrafficSegments
 import com.virtueson.copilotmaps.data.haversineMeters
+import com.virtueson.copilotmaps.data.navPhrases
 import com.virtueson.copilotmaps.location.FusedLocationProvider
 import com.virtueson.copilotmaps.location.LocationSample
 import com.virtueson.copilotmaps.network.NetworkModule
@@ -103,13 +107,18 @@ import kotlinx.coroutines.launch
 @Composable
 fun MapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val languageSettings = remember { LanguageSettings(context) }
+    val appLanguage by languageSettings.language.collectAsStateWithLifecycle()
     val mapViewModel: MapViewModel = viewModel(
         factory = MapViewModelFactory(
             FusedLocationProvider(LocationServices.getFusedLocationProviderClient(context))
         )
     )
     val routeViewModel: RouteViewModel = viewModel(
-        factory = RouteViewModelFactory(DefaultRoutesRepository(NetworkModule.routesApi))
+        factory = RouteViewModelFactory(
+            DefaultRoutesRepository(NetworkModule.routesApi),
+            languageProvider = { languageSettings.language.value.tag },
+        )
     )
     val placesViewModel: PlacesViewModel = viewModel(
         factory = PlacesViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
@@ -117,7 +126,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val searchViewModel: SearchViewModel = viewModel(
         factory = SearchViewModelFactory(DefaultPlacesRepository(NetworkModule.placesApi))
     )
-    val voiceInput = remember { AndroidVoiceInput(context) }
+    val voiceInput = remember { AndroidVoiceInput(context) { languageSettings.language.value.locale } }
     val voiceOutput = remember { AndroidVoiceOutput(context) }
     val copilotViewModel: CopilotViewModel = viewModel(
         factory = CopilotViewModelFactory(
@@ -133,7 +142,9 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
     val locationSample by mapViewModel.location.collectAsStateWithLifecycle()
 
-    val navViewModel: NavViewModel = viewModel(factory = NavViewModelFactory())
+    val navViewModel: NavViewModel = viewModel(
+        factory = NavViewModelFactory { navPhrases(context, languageSettings.language.value.locale) }
+    )
     val navState by navViewModel.state.collectAsStateWithLifecycle()
 
     var navVoiceEnabled by rememberSaveable { mutableStateOf(true) }
@@ -141,7 +152,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
     // Speak nav cues on the shared TTS engine, queued behind any copilot reply.
     LaunchedEffect(Unit) {
         navViewModel.announcements.collect { line ->
-            if (navVoiceEnabled) voiceOutput.speak(line, flush = false)
+            if (navVoiceEnabled) voiceOutput.speak(line, flush = false, locale = appLanguage.locale)
         }
     }
 
@@ -274,6 +285,8 @@ fun MapScreen(modifier: Modifier = Modifier) {
                 onSearchQueryChange = searchViewModel::onQueryChange,
                 onSearchSubmit = { o -> searchViewModel.submit(o) },
                 onClearSearch = searchViewModel::clear,
+                appLanguage = appLanguage,
+                onSetLanguage = languageSettings::set,
             )
         }
     }
@@ -304,6 +317,8 @@ private fun RoutingMap(
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (GeoPoint) -> Unit,
     onClearSearch: () -> Unit,
+    appLanguage: AppLanguage,
+    onSetLanguage: (AppLanguage) -> Unit,
 ) {
     var destination by remember { mutableStateOf<LatLng?>(null) }
     val destinationMarkerState = rememberMarkerState()
@@ -425,6 +440,21 @@ private fun RoutingMap(
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // --- Language toggle ---
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = appLanguage == AppLanguage.ENGLISH,
+                        onClick = { onSetLanguage(AppLanguage.ENGLISH) },
+                        label = { Text("EN") },
+                    )
+                    FilterChip(
+                        selected = appLanguage == AppLanguage.INDONESIAN,
+                        onClick = { onSetLanguage(AppLanguage.INDONESIAN) },
+                        label = { Text("ID") },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
                 // --- Destination search ---
                 OutlinedTextField(
                     value = searchState.query,

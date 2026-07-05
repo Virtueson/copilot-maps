@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 
 class RouteViewModel(
     private val repository: RoutesRepository,
+    private val languageProvider: () -> String? = { null },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<RoutesState>(RoutesState.Idle)
@@ -21,7 +22,7 @@ class RouteViewModel(
     fun planRoutes(origin: GeoPoint, destination: GeoPoint) {
         _state.value = RoutesState.Loading
         viewModelScope.launch {
-            _state.value = when (val result = repository.planRoutes(origin, destination)) {
+            _state.value = when (val result = repository.planRoutes(origin, destination, languageProvider())) {
                 is RoutesResult.Success -> RoutesState.Loaded(result.routes, result.routes.first().id)
                 is RoutesResult.Failure -> RoutesState.Error(result.reason)
             }
@@ -43,8 +44,9 @@ class RouteViewModel(
 
 class RouteViewModelFactory(
     private val repository: RoutesRepository,
+    private val languageProvider: () -> String? = { null },
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        RouteViewModel(repository) as T
+        RouteViewModel(repository, languageProvider) as T
 }

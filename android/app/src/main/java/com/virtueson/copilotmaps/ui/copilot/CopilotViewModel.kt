@@ -3,6 +3,7 @@ package com.virtueson.copilotmaps.ui.copilot
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.virtueson.copilotmaps.data.AppLanguage
 import com.virtueson.copilotmaps.data.ChatMessage
 import com.virtueson.copilotmaps.data.CopilotRepository
 import com.virtueson.copilotmaps.data.CopilotResult
@@ -10,6 +11,7 @@ import com.virtueson.copilotmaps.data.Role
 import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.voice.VoiceInput
 import com.virtueson.copilotmaps.voice.VoiceOutput
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,13 +39,14 @@ class CopilotViewModel(
             val history = withUser.takeLast(MAX_TURNS)
             when (val result = repository.ask(history, context)) {
                 is CopilotResult.Success -> {
+                    val replyLocale = AppLanguage.forTag(result.language)?.locale
                     _state.value = _state.value.copy(
                         messages = _state.value.messages + ChatMessage(Role.ASSISTANT, result.reply),
                         sending = false,
                     )
                     if (speakReply && _state.value.ttsEnabled) {
                         _state.value = _state.value.copy(speaking = true)
-                        voiceOutput.speak(result.reply) {
+                        voiceOutput.speak(result.reply, locale = replyLocale) {
                             _state.value = _state.value.copy(speaking = false)
                         }
                     }

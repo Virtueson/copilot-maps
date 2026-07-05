@@ -6,6 +6,8 @@ import com.virtueson.copilotmaps.data.AnnouncerState
 import com.virtueson.copilotmaps.data.GeoPoint
 import com.virtueson.copilotmaps.data.NavProgress
 import com.virtueson.copilotmaps.data.Route
+import com.virtueson.copilotmaps.data.EnglishNavPhrases
+import com.virtueson.copilotmaps.data.NavPhrases
 import com.virtueson.copilotmaps.data.distanceToRouteMeters
 import com.virtueson.copilotmaps.data.navProgress
 import com.virtueson.copilotmaps.data.nextAnnouncement
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class NavViewModel(
     private val nowEpochSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
+    private val phrasesProvider: () -> NavPhrases = { EnglishNavPhrases },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<NavUiState>(NavUiState.Inactive)
@@ -51,7 +54,7 @@ class NavViewModel(
 
     private fun announce(progress: NavProgress) {
         val steps = route?.steps ?: return
-        val result = nextAnnouncement(steps, progress, announcer)
+        val result = nextAnnouncement(steps, progress, announcer, phrasesProvider())
         announcer = result.state
         result.utterance?.let { _announcements.tryEmit(it) }
     }
@@ -157,7 +160,10 @@ class NavViewModel(
     }
 }
 
-class NavViewModelFactory : ViewModelProvider.Factory {
+class NavViewModelFactory(
+    private val phrasesProvider: () -> NavPhrases = { EnglishNavPhrases },
+) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = NavViewModel() as T
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        NavViewModel(phrasesProvider = phrasesProvider) as T
 }
