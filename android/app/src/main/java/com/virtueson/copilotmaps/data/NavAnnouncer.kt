@@ -19,14 +19,14 @@ private data class Chain(val text: String, val lastIndex: Int)
  * "Turn left, then turn right" — up to [maxChain] turns, stopping before an
  * ARRIVE step. Returns the joined text and the last folded step index.
  */
-private fun chainFrom(steps: List<RouteStep>, i: Int, chainMeters: Int, maxChain: Int): Chain {
+private fun chainFrom(steps: List<RouteStep>, i: Int, chainMeters: Int, maxChain: Int, joiner: String): Chain {
     val sb = StringBuilder(steps[i].instruction)
     var j = i
     var count = 1
     while (count < maxChain && j < steps.size - 1 && steps[j].distanceMeters < chainMeters) {
         val next = steps[j + 1]
         if (next.maneuver == "ARRIVE") break
-        sb.append(", then ").append(next.instruction)
+        sb.append(joiner).append(next.instruction)
         j++
         count++
     }
@@ -42,6 +42,7 @@ fun nextAnnouncement(
     steps: List<RouteStep>,
     progress: NavProgress,
     state: AnnouncerState,
+    phrases: NavPhrases = EnglishNavPhrases,
     prepareMeters: Int = 300,
     nowMeters: Int = 40,
     chainMeters: Int = 40,
@@ -57,7 +58,7 @@ fun nextAnnouncement(
         val last = steps.size - 1
         return AnnouncerResult(
             state.copy(arrivedSpoken = true, nowStep = last, preparedStep = last),
-            "You have arrived.",
+            phrases.arrived,
         )
     }
 
@@ -77,17 +78,17 @@ fun nextAnnouncement(
     val dist = progress.distanceToTurnMeters
 
     if (dist < nowMeters && state.nowStep < i) {
-        val chain = chainFrom(steps, i, chainMeters, maxChain)
+        val chain = chainFrom(steps, i, chainMeters, maxChain, phrases.thenJoiner)
         // Mark every folded turn announced so they don't re-fire individually
         // and the safety net won't re-announce them.
         return AnnouncerResult(state.copy(nowStep = chain.lastIndex, preparedStep = chain.lastIndex), chain.text)
     }
 
     if (dist < prepareMeters && state.preparedStep < i) {
-        val chain = chainFrom(steps, i, chainMeters, maxChain)
+        val chain = chainFrom(steps, i, chainMeters, maxChain, phrases.thenJoiner)
         return AnnouncerResult(
             state.copy(preparedStep = chain.lastIndex),
-            "In ${formatDistance(dist)}, ${chain.text}",
+            "${phrases.inPrefix(formatDistance(dist, phrases))}${chain.text}",
         )
     }
 
@@ -95,11 +96,11 @@ fun nextAnnouncement(
 }
 
 /** Speak-friendly distance: nearest 50 m below 1 km, else one-decimal km. */
-fun formatDistance(meters: Int): String =
+fun formatDistance(meters: Int, phrases: NavPhrases = EnglishNavPhrases): String =
     if (meters >= 1000) {
         val km = Math.round(meters / 100.0) / 10.0
-        "$km kilometers"
+        "$km ${phrases.kilometersUnit}"
     } else {
         val rounded = ((meters + 25) / 50) * 50
-        "$rounded meters"
+        "$rounded ${phrases.metersUnit}"
     }

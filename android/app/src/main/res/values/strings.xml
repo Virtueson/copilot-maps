@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">Copilot Maps</string>
+    <string name="nav_in_prefix">In %s, </string>
+    <string name="nav_then_joiner">, then </string>
+    <string name="nav_meters">meters</string>
+    <string name="nav_kilometers">kilometers</string>
+    <string name="nav_arrived">You have arrived.</string>
 </resources>

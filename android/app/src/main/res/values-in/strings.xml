@@ -1,0 +1,7 @@
+<resources>
+    <string name="nav_in_prefix">Dalam %s, </string>
+    <string name="nav_then_joiner">, lalu </string>
+    <string name="nav_meters">meter</string>
+    <string name="nav_kilometers">kilometer</string>
+    <string name="nav_arrived">Anda telah sampai di tujuan.</string>
+</resources>

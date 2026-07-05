@@ -23,6 +23,14 @@ private fun turn(instruction: String, gapToNext: Int) =
 private fun arrive() =
     RouteStep(instruction = "Arrive at destination", maneuver = "ARRIVE", distanceMeters = 0, location = GeoPoint(0.0, 0.0))
 
+private val idPhrases = NavPhrases(
+    inPrefix = { d -> "Dalam $d, " },
+    thenJoiner = ", lalu ",
+    metersUnit = "meter",
+    kilometersUnit = "kilometer",
+    arrived = "Anda telah sampai di tujuan.",
+)
+
 class NavAnnouncerTest {
 
     @Test
@@ -155,5 +163,25 @@ class NavAnnouncerTest {
         // advancing onto the folded step 2 must NOT re-announce it
         val r2 = nextAnnouncement(steps, progress(2, 30), r1.state)
         assertNull(r2.utterance)
+    }
+
+    @Test fun prepare_cue_uses_indonesian_phrases() {
+        val steps = listOf(
+            RouteStep("Mulai", "DEPART", 1000, GeoPoint(0.0, 0.0)),
+            RouteStep("belok kanan", "TURN_RIGHT", 500, GeoPoint(0.0, 0.01)),
+            RouteStep("tiba", "ARRIVE", 0, GeoPoint(0.0, 0.02)),
+        )
+        val state = AnnouncerState(startedSpoken = true)
+        val progress = NavProgress(stepIndex = 1, distanceToTurnMeters = 250, remainingDistanceMeters = 250, arrived = false)
+        val result = nextAnnouncement(steps, progress, state, idPhrases)
+        assertEquals("Dalam 250 meter, belok kanan", result.utterance)
+    }
+
+    @Test fun arrived_cue_uses_indonesian_phrases() {
+        val steps = listOf(RouteStep("Mulai", "DEPART", 0, GeoPoint(0.0, 0.0)))
+        val state = AnnouncerState(startedSpoken = true)
+        val progress = NavProgress(stepIndex = 0, distanceToTurnMeters = 0, remainingDistanceMeters = 0, arrived = true)
+        val result = nextAnnouncement(steps, progress, state, idPhrases)
+        assertEquals("Anda telah sampai di tujuan.", result.utterance)
     }
 }
