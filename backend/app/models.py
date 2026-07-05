@@ -45,6 +45,8 @@ class Place(BaseModel):
     lng: float
     address: str | None = None
     rating: float | None = None
+    price_level: str | None = None
+    open_now: bool | None = None
 
 
 class PlacesSearchRequest(BaseModel):

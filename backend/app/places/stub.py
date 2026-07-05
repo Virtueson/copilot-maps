@@ -6,6 +6,7 @@ _OFFSETS = [(0.0010, 0.0010), (-0.0015, 0.0012), (0.0008, -0.0017)]
 
 
 def _fake(query: str, lat: float, lng: float) -> list[Place]:
+    price_levels = ["PRICE_LEVEL_INEXPENSIVE", "PRICE_LEVEL_MODERATE", "PRICE_LEVEL_EXPENSIVE"]
     places: list[Place] = []
     for i, (d_lat, d_lng) in enumerate(_OFFSETS):
         places.append(
@@ -16,6 +17,8 @@ def _fake(query: str, lat: float, lng: float) -> list[Place]:
                 lng=lng + d_lng,
                 address=f"{i + 1} Stub Street",
                 rating=4.0 + i * 0.2,
+                price_level=price_levels[i % len(price_levels)],
+                open_now=(i % 2 == 0),
             )
         )
     return places

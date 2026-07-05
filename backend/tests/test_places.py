@@ -62,3 +62,36 @@ def test_malformed_body_422():
     client = _client(along=[], near=[])
     resp = client.post("/places/search", json={"query": "x"})
     assert resp.status_code == 422
+
+
+def test_place_carries_price_and_open_now():
+    p = Place(id="x", name="X", lat=1.0, lng=2.0,
+              price_level="PRICE_LEVEL_MODERATE", open_now=True)
+    client = _client(along=[], near=[p])
+    resp = client.post("/places/search",
+                       json={"query": "q", "origin": {"lat": 1.0, "lng": 2.0}})
+    place = resp.json()["places"][0]
+    assert place["price_level"] == "PRICE_LEVEL_MODERATE"
+    assert place["open_now"] is True
+
+
+def test_google_to_place_maps_price_and_open_now():
+    from app.places.google import _to_place
+    raw = {
+        "id": "g1", "displayName": {"text": "Cafe"},
+        "location": {"latitude": 1.0, "longitude": 2.0},
+        "formattedAddress": "1 St", "rating": 4.5,
+        "priceLevel": "PRICE_LEVEL_INEXPENSIVE",
+        "currentOpeningHours": {"openNow": False},
+    }
+    p = _to_place(raw)
+    assert p.price_level == "PRICE_LEVEL_INEXPENSIVE"
+    assert p.open_now is False
+
+
+def test_google_to_place_tolerates_missing_price_and_hours():
+    from app.places.google import _to_place
+    p = _to_place({"id": "g2", "displayName": {"text": "X"},
+                   "location": {"latitude": 0.0, "longitude": 0.0}})
+    assert p.price_level is None
+    assert p.open_now is None

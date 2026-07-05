@@ -26,3 +26,11 @@ def test_along_route_returns_places_near_polyline():
     assert len(places) >= 1
     for p in places:
         assert "restaurant" in p.name
+
+
+def test_stub_places_include_price_and_open_now():
+    provider = StubPlacesProvider()
+    places = asyncio.run(provider.nearby("coffee", LatLng(lat=1.0, lng=2.0)))
+    assert places, "stub should return places"
+    assert places[0].price_level is not None
+    assert places[0].open_now in (True, False)

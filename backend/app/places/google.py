@@ -5,7 +5,8 @@ from app.models import LatLng, Place
 _SEARCH_TEXT_URL = "https://places.googleapis.com/v1/places:searchText"
 _FIELD_MASK = (
     "places.id,places.displayName,places.location,"
-    "places.formattedAddress,places.rating"
+    "places.formattedAddress,places.rating,"
+    "places.priceLevel,places.currentOpeningHours.openNow"
 )
 
 
@@ -18,6 +19,8 @@ def _to_place(p: dict) -> Place:
         lng=float(location.get("longitude", 0.0)),
         address=p.get("formattedAddress"),
         rating=p.get("rating"),
+        price_level=p.get("priceLevel"),
+        open_now=p.get("currentOpeningHours", {}).get("openNow"),
     )
 
 
