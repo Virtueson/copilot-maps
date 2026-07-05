@@ -11,7 +11,7 @@ class AndroidVoiceOutput(context: Context) : VoiceOutput {
     private var ready = false
     private var counter = 0
     private val callbacks = mutableMapOf<String, () -> Unit>()
-    private var pending: Pair<String, () -> Unit>? = null
+    private var pending: Triple<String, Locale?, () -> Unit>? = null
 
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
@@ -25,9 +25,9 @@ class AndroidVoiceOutput(context: Context) : VoiceOutput {
                     override fun onError(utteranceId: String?) = fire(utteranceId)
                     override fun onError(utteranceId: String?, errorCode: Int) = fire(utteranceId)
                 })
-                pending?.let { (text, cb) ->
+                pending?.let { (text, locale, cb) ->
                     pending = null
-                    speak(text, true, cb)
+                    speak(text, true, locale, cb)
                 }
             }
         }
@@ -37,10 +37,16 @@ class AndroidVoiceOutput(context: Context) : VoiceOutput {
         utteranceId?.let { callbacks.remove(it) }?.invoke()
     }
 
-    override fun speak(text: String, flush: Boolean, onDone: () -> Unit) {
+    override fun speak(text: String, flush: Boolean, locale: Locale?, onDone: () -> Unit) {
         if (!ready) {
-            pending = text to onDone
+            pending = Triple(text, locale, onDone)
             return
+        }
+        if (locale != null) {
+            val res = tts.setLanguage(locale)
+            if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.language = Locale.getDefault() // fall back; still speak
+            }
         }
         val id = "u${counter++}"
         callbacks[id] = onDone

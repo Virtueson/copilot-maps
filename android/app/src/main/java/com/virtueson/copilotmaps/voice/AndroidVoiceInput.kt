@@ -11,7 +11,10 @@ import android.speech.SpeechRecognizer
 import java.util.Locale
 
 /** Real STT backed by Android's SpeechRecognizer. Main-thread API. */
-class AndroidVoiceInput(context: Context) : VoiceInput {
+class AndroidVoiceInput(
+    context: Context,
+    private val languageProvider: () -> Locale = { Locale.getDefault() },
+) : VoiceInput {
     private val appContext = context.applicationContext
     private var recognizer: SpeechRecognizer? = null
 
@@ -55,7 +58,7 @@ class AndroidVoiceInput(context: Context) : VoiceInput {
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageProvider().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
         sr.startListening(intent)

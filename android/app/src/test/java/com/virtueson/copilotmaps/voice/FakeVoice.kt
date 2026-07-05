@@ -1,5 +1,7 @@
 package com.virtueson.copilotmaps.voice
 
+import java.util.Locale
+
 class FakeVoiceInput : VoiceInput {
     var started = false
     var stopped = false
@@ -33,7 +35,7 @@ class FakeVoiceOutput : VoiceOutput {
     var stopped = false
     var shutdownCalled = false
 
-    override fun speak(text: String, flush: Boolean, onDone: () -> Unit) {
+    override fun speak(text: String, flush: Boolean, locale: Locale?, onDone: () -> Unit) {
         spoken += text
         flushFlags += flush
         onDone()
