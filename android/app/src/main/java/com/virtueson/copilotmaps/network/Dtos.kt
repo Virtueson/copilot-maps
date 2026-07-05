@@ -10,6 +10,7 @@ data class LatLngDto(
 data class RoutePlanRequestDto(
     val origin: LatLngDto,
     val destination: LatLngDto,
+    @Json(name = "language_code") val languageCode: String? = null,
 )
 
 data class TrafficIntervalDto(

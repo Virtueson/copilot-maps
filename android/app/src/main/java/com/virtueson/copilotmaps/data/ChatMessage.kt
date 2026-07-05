@@ -22,6 +22,6 @@ data class TripContext(
 )
 
 sealed interface CopilotResult {
-    data class Success(val reply: String) : CopilotResult
+    data class Success(val reply: String, val language: String? = null) : CopilotResult
     data class Failure(val reason: String) : CopilotResult
 }

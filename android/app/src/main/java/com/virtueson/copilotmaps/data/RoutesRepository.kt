@@ -6,7 +6,7 @@ import com.virtueson.copilotmaps.network.RoutePlanRequestDto
 import com.virtueson.copilotmaps.network.RoutesApi
 
 interface RoutesRepository {
-    suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint): RoutesResult
+    suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint, languageTag: String? = null): RoutesResult
 }
 
 private fun String.toTrafficSpeed(): TrafficSpeed = when (this) {
@@ -19,12 +19,13 @@ private fun String.toTrafficSpeed(): TrafficSpeed = when (this) {
 class DefaultRoutesRepository(
     private val api: RoutesApi,
 ) : RoutesRepository {
-    override suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint): RoutesResult {
+    override suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint, languageTag: String?): RoutesResult {
         return try {
             val response = api.planRoutes(
                 RoutePlanRequestDto(
                     origin = LatLngDto(origin.lat, origin.lng),
                     destination = LatLngDto(destination.lat, destination.lng),
+                    languageCode = languageTag,
                 )
             )
             val routes = response.routes.map { dto ->

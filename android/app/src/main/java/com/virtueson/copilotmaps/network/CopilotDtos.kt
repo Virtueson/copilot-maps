@@ -28,4 +28,5 @@ data class CopilotAskRequestDto(
 
 data class CopilotAskResponseDto(
     val reply: String,
+    val language: String? = null,
 )

@@ -14,7 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 
 private class FakeRoutesRepository(private val result: RoutesResult) : RoutesRepository {
-    override suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint): RoutesResult = result
+    override suspend fun planRoutes(origin: GeoPoint, destination: GeoPoint, languageTag: String?): RoutesResult = result
 }
 
 private fun sampleRoute(id: String) = Route(

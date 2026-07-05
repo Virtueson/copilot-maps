@@ -34,7 +34,7 @@ class DefaultCopilotRepository(
                     ),
                 )
             )
-            CopilotResult.Success(response.reply)
+            CopilotResult.Success(response.reply, response.language)
         } catch (e: Exception) {
             CopilotResult.Failure("Can't reach the server — is the backend running and adb reverse set?")
         }
