@@ -62,3 +62,38 @@ def test_copilot_ask_malformed_422():
     client = _client()
     resp = client.post("/copilot/ask", json={"messages": []})
     assert resp.status_code == 422
+
+
+class _FakeCopilot:
+    def __init__(self, reply):
+        self._reply = reply
+
+    async def ask(self, messages, context):
+        return self._reply
+
+
+def _body():
+    return {
+        "messages": [{"role": "user", "content": "test"}],
+        "context": {"origin": {"lat": 1.0, "lng": 2.0}},
+    }
+
+
+def test_reply_language_indonesian():
+    app.dependency_overrides[get_copilot] = lambda: _FakeCopilot("Belok kiri lalu lurus terus")
+    try:
+        resp = TestClient(app).post("/copilot/ask", json=_body())
+        assert resp.status_code == 200
+        assert resp.json()["language"] == "id"
+    finally:
+        app.dependency_overrides.pop(get_copilot, None)
+
+
+def test_reply_language_english():
+    app.dependency_overrides[get_copilot] = lambda: _FakeCopilot("Turn left then continue straight")
+    try:
+        resp = TestClient(app).post("/copilot/ask", json=_body())
+        assert resp.status_code == 200
+        assert resp.json()["language"] == "en"
+    finally:
+        app.dependency_overrides.pop(get_copilot, None)

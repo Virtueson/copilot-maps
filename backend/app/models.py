@@ -87,3 +87,4 @@ class CopilotAskRequest(BaseModel):
 
 class CopilotAskResponse(BaseModel):
     reply: str
+    language: str = "en"
