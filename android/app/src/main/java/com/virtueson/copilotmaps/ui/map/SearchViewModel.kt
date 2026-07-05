@@ -7,6 +7,7 @@ import com.virtueson.copilotmaps.data.GeoPoint
 import com.virtueson.copilotmaps.data.Place
 import com.virtueson.copilotmaps.data.PlacesRepository
 import com.virtueson.copilotmaps.data.PlacesResult
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,8 @@ class SearchViewModel(
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
+    private var searchJob: Job? = null
+
     fun onQueryChange(text: String) {
         _state.value = _state.value.copy(query = text)
     }
@@ -34,8 +37,9 @@ class SearchViewModel(
     fun submit(origin: GeoPoint) {
         val q = _state.value.query.trim()
         if (q.isEmpty()) return
+        searchJob?.cancel()
         _state.value = _state.value.copy(loading = true, error = null)
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             _state.value = when (val r = repository.searchPlaces(q, origin, null)) {
                 is PlacesResult.Success ->
                     _state.value.copy(results = r.places, loading = false, searched = true, error = null)
@@ -46,6 +50,7 @@ class SearchViewModel(
     }
 
     fun clear() {
+        searchJob?.cancel()
         _state.value = SearchUiState()
     }
 }

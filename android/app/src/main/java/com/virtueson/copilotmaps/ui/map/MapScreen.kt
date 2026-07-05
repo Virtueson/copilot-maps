@@ -410,7 +410,7 @@ private fun RoutingMap(
         }
 
         if (!navActive) {
-            // Top overlay: category buttons + status/notes.
+            // Top overlay: search + category buttons + status/notes.
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -419,6 +419,70 @@ private fun RoutingMap(
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // --- Destination search ---
+                OutlinedTextField(
+                    value = searchState.query,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search a place") },
+                    leadingIcon = { Text("🔍") },
+                    trailingIcon = {
+                        if (searchState.query.isNotEmpty()) {
+                            TextButton(onClick = onClearSearch) { Text("✕") }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearchSubmit(origin) }),
+                )
+                if (searchState.loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+                }
+                when {
+                    searchState.error != null -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(searchState.error)
+                            TextButton(onClick = { onSearchSubmit(origin) }) { Text("Retry") }
+                        }
+                    }
+                    searchState.searched && searchState.results.isEmpty() && !searchState.loading ->
+                        Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Text("No places found", Modifier.padding(12.dp))
+                        }
+                    searchState.results.isNotEmpty() -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                            items(searchState.results, key = { it.id }) { place ->
+                                SearchResultRow(
+                                    place = place,
+                                    distanceMeters = haversineMeters(origin, place.location).toInt(),
+                                    onClick = {
+                                        following = false
+                                        val dest = LatLng(place.location.lat, place.location.lng)
+                                        destination = dest
+                                        onPlan(place.location)
+                                        onClearSearch()
+                                        searchScope.launch {
+                                            val bounds = LatLngBounds.builder()
+                                                .include(LatLng(origin.lat, origin.lng))
+                                                .include(dest)
+                                                .build()
+                                            try {
+                                                cameraPositionState.animate(
+                                                    CameraUpdateFactory.newLatLngBounds(bounds, 120), 1000,
+                                                )
+                                            } catch (_: Exception) {
+                                                // map not ready; ignore
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
                 Surface(tonalElevation = 3.dp) {
                     Row(
                         modifier = Modifier.padding(6.dp),
@@ -504,78 +568,6 @@ private fun RoutingMap(
             )
         }
 
-        if (!navActive) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .fillMaxWidth()
-                    .padding(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = searchState.query,
-                    onValueChange = onSearchQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("Search a place") },
-                    leadingIcon = { Text("🔍") },
-                    trailingIcon = {
-                        if (searchState.query.isNotEmpty()) {
-                            TextButton(onClick = onClearSearch) { Text("✕") }
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearchSubmit(origin) }),
-                )
-
-                if (searchState.loading) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-                }
-
-                when {
-                    searchState.error != null -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(searchState.error)
-                            TextButton(onClick = { onSearchSubmit(origin) }) { Text("Retry") }
-                        }
-                    }
-                    searchState.searched && searchState.results.isEmpty() && !searchState.loading ->
-                        Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                            Text("No places found", Modifier.padding(12.dp))
-                        }
-                    searchState.results.isNotEmpty() -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                            items(searchState.results, key = { it.id }) { place ->
-                                SearchResultRow(
-                                    place = place,
-                                    distanceMeters = haversineMeters(origin, place.location).toInt(),
-                                    onClick = {
-                                        following = false
-                                        val dest = LatLng(place.location.lat, place.location.lng)
-                                        destination = dest
-                                        onPlan(place.location)
-                                        onClearSearch()
-                                        searchScope.launch {
-                                            val bounds = LatLngBounds.builder()
-                                                .include(LatLng(origin.lat, origin.lng))
-                                                .include(dest)
-                                                .build()
-                                            try {
-                                                cameraPositionState.animate(
-                                                    CameraUpdateFactory.newLatLngBounds(bounds, 120), 1000,
-                                                )
-                                            } catch (e: Exception) {
-                                                // map not ready; ignore
-                                            }
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -87,6 +87,20 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `clear during an in-flight search discards the stale result`() = runTest {
+        val vm = SearchViewModel(CountingFakeRepo(PlacesResult.Success(listOf(place("a")), "nearby")))
+        vm.onQueryChange("pizza")
+        vm.submit(origin)   // launches; not yet run on the test dispatcher
+        vm.clear()          // cancels the in-flight job
+        advanceUntilIdle()
+
+        val s = vm.state.value
+        assertEquals("", s.query)
+        assertTrue(s.results.isEmpty())
+        assertFalse(s.searched)
+    }
+
+    @Test
     fun `price symbols map correctly`() {
         assertEquals("$", priceSymbol("PRICE_LEVEL_INEXPENSIVE"))
         assertEquals("$$", priceSymbol("PRICE_LEVEL_MODERATE"))
