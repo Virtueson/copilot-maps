@@ -108,6 +108,11 @@ import kotlinx.coroutines.launch
 fun MapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val languageSettings = remember { LanguageSettings(context) }
+    // `appLanguage` (below) is a composition-time snapshot for recomposing UI/nav-cue reads.
+    // Provider lambdas passed into factories (AndroidVoiceInput, NavViewModelFactory) capture
+    // `languageSettings` once and must read `languageSettings.language.value` directly at
+    // invocation time so they see the current language, not whatever was current when the
+    // factory/lambda was constructed.
     val appLanguage by languageSettings.language.collectAsStateWithLifecycle()
     val mapViewModel: MapViewModel = viewModel(
         factory = MapViewModelFactory(

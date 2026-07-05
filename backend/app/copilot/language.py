@@ -8,9 +8,9 @@ import re
 
 _ID_MARKERS = {
     "yang", "tidak", "ada", "dari", "ke", "di", "dan", "atau", "dengan",
-    "belok", "kanan", "kiri", "lurus", "terus", "menit", "kilometer", "meter",
+    "belok", "kanan", "kiri", "lurus", "terus", "menit",
     "jalan", "sampai", "tujuan", "macet", "lewat", "menuju", "sekitar", "depan",
-    "anda", "saya", "ya", "tidak", "sudah", "belum", "akan",
+    "anda", "saya", "ya", "sudah", "belum", "akan",
 }
 
 
@@ -19,7 +19,8 @@ def detect_language(text: str) -> str:
     if not words:
         return "en"
     hits = sum(1 for w in words if w in _ID_MARKERS)
-    # Require at least 2 marker hits, or 1 hit in a very short reply, to claim Indonesian.
-    if hits >= 2 or (hits >= 1 and len(words) <= 3):
+    # Require at least 2 marker hits, or a short reply that is essentially all markers,
+    # to claim Indonesian.
+    if hits >= 2 or (hits == len(words) and len(words) <= 2):
         return "id"
     return "en"
