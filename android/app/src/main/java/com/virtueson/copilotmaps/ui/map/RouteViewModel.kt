@@ -34,6 +34,11 @@ class RouteViewModel(
             _state.value = current.copy(selectedId = id)
         }
     }
+
+    /** Clear the planned route(s), returning to the idle map. */
+    fun clear() {
+        _state.value = RoutesState.Idle
+    }
 }
 
 class RouteViewModelFactory(

@@ -46,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -257,6 +259,7 @@ fun MapScreen(modifier: Modifier = Modifier) {
                     placesViewModel.search(category, origin, polyline)
                 },
                 onClearPlaces = placesViewModel::clear,
+                onCancelRoute = { routeViewModel.clear() },
                 onSendCopilot = { text ->
                     copilotViewModel.sendMessage(text, buildTripContext(origin, routesState))
                 },
@@ -288,6 +291,7 @@ private fun RoutingMap(
     onSelect: (String) -> Unit,
     onSearchPlaces: (PlaceCategory) -> Unit,
     onClearPlaces: () -> Unit,
+    onCancelRoute: () -> Unit,
     onSendCopilot: (String) -> Unit,
     onMicCopilot: () -> Unit,
     onToggleTts: (Boolean) -> Unit,
@@ -313,6 +317,7 @@ private fun RoutingMap(
 
     var following by remember { mutableStateOf(true) }
     val searchScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     val navActive = navState is NavUiState.Active
     LaunchedEffect(navActive) { if (navActive) following = true }
@@ -433,7 +438,14 @@ private fun RoutingMap(
                         }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearchSubmit(origin) }),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        onSearchSubmit(origin)
+                        focusManager.clearFocus()
+                    }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                    ),
                 )
                 if (searchState.loading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
@@ -456,6 +468,7 @@ private fun RoutingMap(
                                     place = place,
                                     distanceMeters = haversineMeters(origin, place.location).toInt(),
                                     onClick = {
+                                        focusManager.clearFocus()
                                         following = false
                                         val dest = LatLng(place.location.lat, place.location.lng)
                                         destination = dest
@@ -525,6 +538,10 @@ private fun RoutingMap(
                     state = routesState,
                     onSelect = onSelect,
                     onStart = onStartNav,
+                    onCancel = {
+                        destination = null
+                        onCancelRoute()
+                    },
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -597,6 +614,7 @@ private fun RouteCards(
     state: RoutesState.Loaded,
     onSelect: (String) -> Unit,
     onStart: (Route) -> Unit,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -633,10 +651,13 @@ private fun RouteCards(
         }
         Spacer(Modifier.height(8.dp))
         val selectedRoute = state.routes.firstOrNull { it.id == state.selectedId }
-        Button(
-            onClick = { selectedRoute?.let(onStart) },
-            enabled = selectedRoute != null && selectedRoute.steps.isNotEmpty(),
-        ) { Text("Start") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onCancel) { Text("Cancel") }
+            Button(
+                onClick = { selectedRoute?.let(onStart) },
+                enabled = selectedRoute != null && selectedRoute.steps.isNotEmpty(),
+            ) { Text("Start") }
+        }
     }
 }
 
