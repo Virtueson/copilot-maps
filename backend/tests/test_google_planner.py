@@ -1,4 +1,5 @@
-from app.planners.google import _parse_steps
+from app.models import LatLng
+from app.planners.google import _parse_steps, _build_body
 
 
 def test_parse_steps_extracts_fields_and_defaults_missing():
@@ -37,3 +38,13 @@ def test_parse_steps_extracts_fields_and_defaults_missing():
 
 def test_parse_steps_no_legs_returns_empty():
     assert _parse_steps({}) == []
+
+
+def test_build_body_includes_language_code_when_set():
+    body = _build_body(LatLng(lat=-6.2, lng=106.8), LatLng(lat=-6.3, lng=106.9), "id")
+    assert body["languageCode"] == "id"
+
+
+def test_build_body_omits_language_code_when_none():
+    body = _build_body(LatLng(lat=-6.2, lng=106.8), LatLng(lat=-6.3, lng=106.9), None)
+    assert "languageCode" not in body

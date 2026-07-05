@@ -28,6 +28,20 @@ def _parse_intervals(item: dict) -> list[TrafficInterval]:
     return intervals
 
 
+def _build_body(origin: LatLng, destination: LatLng, language_code: str | None) -> dict:
+    body = {
+        "origin": {"location": {"latLng": {"latitude": origin.lat, "longitude": origin.lng}}},
+        "destination": {"location": {"latLng": {"latitude": destination.lat, "longitude": destination.lng}}},
+        "travelMode": "DRIVE",
+        "routingPreference": "TRAFFIC_AWARE",
+        "computeAlternativeRoutes": True,
+        "extraComputations": ["TRAFFIC_ON_POLYLINE"],
+    }
+    if language_code:
+        body["languageCode"] = language_code
+    return body
+
+
 def _parse_steps(item: dict) -> list[RouteStep]:
     steps: list[RouteStep] = []
     for leg in item.get("legs", []):
@@ -52,15 +66,8 @@ class GoogleRoutePlanner:
     def __init__(self, api_key: str):
         self._api_key = api_key
 
-    async def plan(self, origin: LatLng, destination: LatLng) -> list[Route]:
-        body = {
-            "origin": {"location": {"latLng": {"latitude": origin.lat, "longitude": origin.lng}}},
-            "destination": {"location": {"latLng": {"latitude": destination.lat, "longitude": destination.lng}}},
-            "travelMode": "DRIVE",
-            "routingPreference": "TRAFFIC_AWARE",
-            "computeAlternativeRoutes": True,
-            "extraComputations": ["TRAFFIC_ON_POLYLINE"],
-        }
+    async def plan(self, origin: LatLng, destination: LatLng, language_code: str | None = None) -> list[Route]:
+        body = _build_body(origin, destination, language_code)
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": self._api_key,

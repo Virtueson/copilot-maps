@@ -54,3 +54,14 @@ def test_plan_includes_turn_by_turn_steps():
         assert steps[0]["instruction"]
         assert steps[0]["distance_meters"] >= 0
         assert "lat" in steps[0]["location"] and "lng" in steps[0]["location"]
+
+
+def test_plan_accepts_language_code():
+    body = {
+        "origin": {"lat": 1.2966, "lng": 103.7764},
+        "destination": {"lat": 1.3521, "lng": 103.8198},
+        "language_code": "id",
+    }
+    resp = client.post("/routes/plan", json=body)
+    assert resp.status_code == 200
+    assert len(resp.json()["routes"]) == 3

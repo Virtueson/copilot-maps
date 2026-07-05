@@ -51,7 +51,9 @@ class StubRoutePlanner:
         (-0.018, "Alternate way"),
     ]
 
-    async def plan(self, origin: LatLng, destination: LatLng) -> list[Route]:
+    async def plan(
+        self, origin: LatLng, destination: LatLng, language_code: str | None = None
+    ) -> list[Route]:
         routes: list[Route] = []
         for i, (offset, summary) in enumerate(self._VARIANTS):
             mid = _offset_midpoint(origin, destination, offset)

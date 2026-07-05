@@ -32,6 +32,7 @@ class Route(BaseModel):
 class RoutePlanRequest(BaseModel):
     origin: LatLng
     destination: LatLng
+    language_code: str | None = None
 
 
 class RoutePlanResponse(BaseModel):
