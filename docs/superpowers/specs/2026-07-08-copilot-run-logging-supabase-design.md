@@ -46,6 +46,7 @@ create table copilot_runs (
   id              uuid primary key default gen_random_uuid(),
   created_at      timestamptz not null default now(),
   session_id      text,
+  turn_index      int,                  -- 0-based position of this turn within the session
   user_message    text,                 -- the latest user turn
   memory_messages jsonb,                -- ⭐ exact messages array sent to the LLM
   trip_context    jsonb,                -- origin + routes snapshot sent as context
@@ -66,8 +67,9 @@ create table copilot_runs (
 
 ```
 Phone (CopilotViewModel)
-  ├─ new conversation → generate session_id (UUID), keep for the conversation
-  └─ POST /copilot/ask { messages, context, session_id }
+  ├─ new conversation → generate session_id (UUID), reset turn_index to 0
+  ├─ each question → turn_index += 1 after sending
+  └─ POST /copilot/ask { messages, context, session_id, turn_index }
         │
 Backend /copilot/ask
   ├─ t0 = now()
@@ -89,15 +91,19 @@ Backend /copilot/ask
    - `loop_count` = number of LLM round-trips actually taken.
 
 2. **New `app/logging/supabase_logger.py`** (or `app/copilot/run_log.py`):
-   - `build_run_row(session_id, messages, context, result, answer_language, model, provider, latency_ms, error) -> dict` — pure function assembling the row (unit-testable).
+   - `build_run_row(session_id, turn_index, messages, context, result, answer_language, model, provider, latency_ms, error) -> dict` — pure function assembling the row (unit-testable).
    - `async def log_run(row: dict) -> None` — best-effort `httpx` POST; returns silently if
-     `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` are unset or the request errors (logs a warning).
+     `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` are unset. On a POST error it swallows the
+     exception and logs a warning **that names the run** —
+     `session_id`, `turn_index`, and a truncated `user_message` — so the miss is
+     traceable in the server log, not just a generic failure.
 
 3. **Config** (`app/config.py` `Settings`): add `supabase_url: str = ""`,
    `supabase_service_key: str = ""`. A helper `supabase_logging_enabled()` = both set.
 
-4. **Request model / DTO:** add `session_id: str | None = None` to `CopilotAskRequest`
-   (backend) and `CopilotAskRequestDto` (app).
+4. **Request model / DTO:** add `session_id: str | None = None` and
+   `turn_index: int | None = None` to `CopilotAskRequest` (backend) and
+   `CopilotAskRequestDto` (app).
 
 5. **Router `/copilot/ask`:** time the call, unpack the new result, run `detect_language`
    on the reply (already does), then `await log_run(build_run_row(...))` inside a
@@ -110,16 +116,30 @@ Backend /copilot/ask
 
 - **`session_id` generation:** `CopilotViewModel` holds a `sessionId` (a
   `UUID.randomUUID().toString()`), created on init and **regenerated whenever the
-  conversation resets** (the existing "Clear"/new-chat path). It is passed into
-  `CopilotRepository.ask(...)` → `CopilotAskRequestDto.session_id`.
+  conversation resets** (the existing "Clear"/new-chat path).
+- **`turn_index`:** a counter alongside `sessionId`, **reset to 0 when the session
+  regenerates** and incremented once per question sent. Together `(session_id, turn_index)`
+  uniquely orders a conversation's turns, so a missing log row is visible as a gap in the
+  sequence.
+- Both are passed into `CopilotRepository.ask(...)` → `CopilotAskRequestDto`.
 - No UI change. No change to how memory is held or trimmed.
 
 ## Error handling / edge cases
 
 - **Supabase down or slow:** the POST has a short timeout (e.g. 5 s); any exception is
-  caught and logged as a warning — the answer has already been returned to the caller, so
-  the driver is unaffected. (Logging happens after the reply is computed; consider firing it
-  without awaiting completion so it never adds latency — see Open question.)
+  caught and logged as a warning naming `(session_id, turn_index, user_message[:40])` — the
+  answer has already been returned to the caller, so the driver is unaffected. Logging is
+  **fire-and-forget** (see resolved decision below) so it never adds latency.
+- **Knowing which runs were NOT logged (as the dev):** a failed insert leaves *no* row, so
+  it cannot be found by querying Supabase for it directly. Two independent signals cover
+  this: (1) the **enriched server-log warning** names the exact run; (2) **`turn_index`
+  gaps** — for a `session_id`, a hole in the `0,1,2,…` sequence (e.g. turns `0,1,3`) means
+  that turn's row never landed. The gap check catches misses regardless of cause (including
+  a process crash before the detached insert runs, where no warning is emitted at all), so
+  it is the primary completeness audit.
+- **Optional dead-letter (deferred):** if a truly lossless log is ever needed, a failed
+  insert could append the row to a local `failed_runs.jsonl` for later replay. Out of scope
+  for the first version — the `turn_index` gap audit is sufficient to *detect* misses.
 - **Unconfigured (no env):** `log_run` returns immediately; zero behavioral impact. This is
   the default for local dev and CI.
 - **Copilot error path:** a row is still written with `error` populated and `answer=""`.
@@ -132,7 +152,8 @@ Backend /copilot/ask
 
 **Backend (pytest, stub-only, no live Supabase):**
 - `build_run_row(...)` maps a sample `messages`/`context`/result into the expected dict
-  (session_id, memory_messages, tools_used, loop_count, answer, latency, model, provider).
+  (session_id, turn_index, memory_messages, tools_used, loop_count, answer, latency, model,
+  provider).
 - Agent-loop metadata: a loop that calls a tool once then answers reports
   `tools_used == ["search_places"]` and the correct `loop_count`; a no-tool answer reports
   `tools_used == []`.
@@ -148,12 +169,13 @@ Backend /copilot/ask
   triggers `search_places`; confirm a row appears with the memory, `tools_used`,
   `loop_count`, and answer populated.
 
-## Open questions (resolve in planning)
+## Resolved decisions
 
-- **Await vs. fire-and-forget:** to guarantee zero added latency, dispatch `log_run` as a
-  background task (`asyncio.create_task`) rather than awaiting it in the request path.
-  Leaning fire-and-forget, with the row built synchronously (cheap) and only the POST
-  detached. Confirm during planning.
+- **Fire-and-forget insert.** The row is built synchronously (cheap) right after the answer
+  is computed, then the POST is dispatched as a detached background task
+  (`asyncio.create_task(log_run(row))`) so it adds **zero latency** to the Copilot response.
+  The one blind spot — a process crash between replying and the task running — is covered by
+  the `turn_index` gap audit, not by the warning.
 
 ## Files touched (indicative)
 
@@ -168,9 +190,10 @@ Backend /copilot/ask
 - `backend/tests/` — `test_run_log.py` (+ loop-metadata assertions).
 
 **App**
-- `network/CopilotDtos.kt` — `CopilotAskRequestDto.session_id`.
-- `data/CopilotRepository.kt` — pass `session_id` through.
-- `ui/copilot/CopilotViewModel.kt` — hold + regenerate `sessionId`, send it.
+- `network/CopilotDtos.kt` — `CopilotAskRequestDto.session_id` + `turn_index`.
+- `data/CopilotRepository.kt` — pass `session_id` + `turn_index` through.
+- `ui/copilot/CopilotViewModel.kt` — hold + regenerate `sessionId`, track/increment
+  `turnIndex`, send both.
 
 ## Non-goals
 
