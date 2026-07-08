@@ -14,7 +14,7 @@ async def copilot_ask(
     copilot=Depends(get_copilot),
 ) -> CopilotAskResponse:
     try:
-        reply = await copilot.ask(request.messages, request.context)
+        result = await copilot.ask(request.messages, request.context)
     except CopilotError as exc:
         raise HTTPException(status_code=502, detail=f"Copilot error: {exc}") from exc
-    return CopilotAskResponse(reply=reply, language=detect_language(reply))
+    return CopilotAskResponse(reply=result.reply, language=detect_language(result.reply))

@@ -1,5 +1,6 @@
 import asyncio
 
+from app.copilot.base import AskResult
 from app.copilot.stub import StubCopilot
 from app.models import ChatMessage, CopilotContext, LatLng, RouteSummary
 
@@ -18,11 +19,11 @@ def _context() -> CopilotContext:
 def test_stub_reply_mentions_route_count():
     messages = [ChatMessage(role="user", content="which route is fastest?")]
 
-    reply = asyncio.run(StubCopilot().ask(messages, _context()))
+    result = asyncio.run(StubCopilot().ask(messages, _context()))
 
-    assert isinstance(reply, str)
-    assert reply
-    assert "1" in reply  # references the one route in context
+    assert isinstance(result.reply, str)
+    assert result.reply
+    assert "1" in result.reply  # references the one route in context
 
 
 from fastapi.testclient import TestClient
@@ -33,7 +34,7 @@ from app.main import app
 
 class _FixedCopilot:
     async def ask(self, messages, context):
-        return "fixed reply about " + str(len(context.routes)) + " routes"
+        return AskResult("fixed reply about " + str(len(context.routes)) + " routes", [], 1)
 
 
 def _client() -> TestClient:
@@ -69,7 +70,7 @@ class _FakeCopilot:
         self._reply = reply
 
     async def ask(self, messages, context):
-        return self._reply
+        return AskResult(self._reply, [], 1)
 
 
 def _body():

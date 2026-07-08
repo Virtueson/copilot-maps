@@ -54,13 +54,15 @@ def test_loop_runs_tool_then_returns_text():
         executed["query"] = tool_input["query"]
         return "Found 1 place on the route: Shell"
 
-    reply = asyncio.run(run_agent_loop(
+    result = asyncio.run(run_agent_loop(
         client=client, model="m", system="s", tools=[], messages=[],
         execute_tool=fake_execute,
     ))
 
     assert executed == {"name": "search_places", "query": "gas"}
-    assert reply == "There's a Shell ahead."
+    assert result.reply == "There's a Shell ahead."
+    assert result.tools_used == ["search_places"]
+    assert result.loop_count == 2
     assert client.messages.calls == 2
 
 
@@ -71,9 +73,11 @@ def test_loop_returns_text_without_tool():
     async def fake_execute(name, tool_input):
         raise AssertionError("should not be called")
 
-    reply = asyncio.run(run_agent_loop(
+    result = asyncio.run(run_agent_loop(
         client=client, model="m", system="s", tools=[], messages=[],
         execute_tool=fake_execute,
     ))
 
-    assert reply == "Take the expressway."
+    assert result.reply == "Take the expressway."
+    assert result.tools_used == []
+    assert result.loop_count == 1

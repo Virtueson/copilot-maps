@@ -70,14 +70,16 @@ def test_openai_loop_runs_tool_then_returns_text():
         executed["query"] = args["query"]
         return "Found 1 place on the route: Shell"
 
-    reply = asyncio.run(run_openai_agent_loop(
+    result = asyncio.run(run_openai_agent_loop(
         client=client, model="deepseek-v4-flash",
         messages=[{"role": "user", "content": "gas?"}],
         tools=[], execute_tool=fake_execute,
     ))
 
     assert executed == {"name": "search_places", "query": "gas"}
-    assert reply == "There's a Shell ahead."
+    assert result.reply == "There's a Shell ahead."
+    assert result.tools_used == ["search_places"]
+    assert result.loop_count == 2
     assert client.chat.completions.calls == 2
 
 
@@ -88,8 +90,10 @@ def test_openai_loop_returns_text_without_tool():
     async def fake_execute(name, args):
         raise AssertionError("should not be called")
 
-    reply = asyncio.run(run_openai_agent_loop(
+    result = asyncio.run(run_openai_agent_loop(
         client=client, model="m", messages=[], tools=[], execute_tool=fake_execute,
     ))
 
-    assert reply == "Take the expressway."
+    assert result.reply == "Take the expressway."
+    assert result.tools_used == []
+    assert result.loop_count == 1

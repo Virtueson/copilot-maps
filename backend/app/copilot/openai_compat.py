@@ -11,7 +11,7 @@ import json
 
 import openai
 
-from app.copilot.base import CopilotError
+from app.copilot.base import CopilotError, AskResult
 from app.copilot.prompt import PERSONA, format_context
 from app.copilot.registry import dispatch, to_openai_tools
 from app.copilot.tools import build_tools
@@ -29,7 +29,10 @@ async def run_openai_agent_loop(
     client, model, messages, tools, execute_tool, max_iterations=_MAX_ITERATIONS
 ):
     convo = list(messages)
+    tools_used: list[str] = []
+    loops = 0
     for _ in range(max_iterations):
+        loops += 1
         response = await client.chat.completions.create(
             model=model,
             max_tokens=_MAX_TOKENS,
@@ -55,6 +58,7 @@ async def run_openai_agent_loop(
                 ],
             })
             for tc in tool_calls:
+                tools_used.append(tc.function.name)
                 try:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
@@ -66,8 +70,8 @@ async def run_openai_agent_loop(
                     "content": result,
                 })
             continue
-        return (message.content or "").strip()
-    return "Sorry, I couldn't work that out just now."
+        return AskResult((message.content or "").strip(), tools_used, loops)
+    return AskResult("Sorry, I couldn't work that out just now.", tools_used, loops)
 
 
 class OpenAICompatCopilot:
@@ -76,7 +80,7 @@ class OpenAICompatCopilot:
         self._tools = build_tools(places_provider)
         self._client = client or openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-    async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> str:
+    async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> AskResult:
         async def execute(name: str, args: dict) -> str:
             return await dispatch(self._tools, name, args, context)
 

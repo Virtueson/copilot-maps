@@ -1,6 +1,6 @@
 import anthropic
 
-from app.copilot.base import CopilotError
+from app.copilot.base import CopilotError, AskResult
 from app.copilot.prompt import PERSONA, format_context
 from app.copilot.registry import dispatch, to_anthropic_tools
 from app.copilot.tools import build_tools
@@ -21,7 +21,10 @@ def _system_blocks(context: CopilotContext) -> list[dict]:
 
 async def run_agent_loop(client, model, system, tools, messages, execute_tool, max_iterations=_MAX_ITERATIONS):
     convo = list(messages)
+    tools_used: list[str] = []
+    loops = 0
     for _ in range(max_iterations):
+        loops += 1
         response = await client.messages.create(
             model=model,
             max_tokens=_MAX_TOKENS,
@@ -34,6 +37,7 @@ async def run_agent_loop(client, model, system, tools, messages, execute_tool, m
             tool_results = []
             for block in response.content:
                 if getattr(block, "type", None) == "tool_use":
+                    tools_used.append(block.name)
                     result = await execute_tool(block.name, block.input)
                     tool_results.append({
                         "type": "tool_result",
@@ -42,10 +46,11 @@ async def run_agent_loop(client, model, system, tools, messages, execute_tool, m
                     })
             convo.append({"role": "user", "content": tool_results})
             continue
-        return "".join(
+        text = "".join(
             b.text for b in response.content if getattr(b, "type", None) == "text"
         ).strip()
-    return "Sorry, I couldn't work that out just now."
+        return AskResult(text, tools_used, loops)
+    return AskResult("Sorry, I couldn't work that out just now.", tools_used, loops)
 
 
 class AnthropicCopilot:
@@ -53,7 +58,7 @@ class AnthropicCopilot:
         self._tools = build_tools(places_provider)
         self._client = client or anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> str:
+    async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> AskResult:
         async def execute(name: str, tool_input: dict) -> str:
             return await dispatch(self._tools, name, tool_input, context)
 
