@@ -58,7 +58,8 @@ async def run_openai_agent_loop(
                 ],
             })
             for tc in tool_calls:
-                tools_used.append(tc.function.name)
+                if tc.function.name not in tools_used:
+                    tools_used.append(tc.function.name)
                 try:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:

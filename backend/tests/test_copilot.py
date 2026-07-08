@@ -1,6 +1,6 @@
 import asyncio
 
-from app.copilot.base import AskResult
+from app.copilot.base import AskResult, CopilotError
 from app.copilot.stub import StubCopilot
 from app.models import ChatMessage, CopilotContext, LatLng, RouteSummary
 
@@ -112,3 +112,30 @@ def test_ask_accepts_session_and_turn_and_still_returns_reply():
     assert resp.status_code == 200
     assert resp.json()["reply"] == "fixed reply about 0 routes"
     assert set(resp.json().keys()) == {"reply", "language"}  # contract unchanged
+
+
+class _FailingCopilot:
+    async def ask(self, messages, context):
+        raise CopilotError("upstream boom")
+
+
+def test_copilot_ask_error_path_logs_run(monkeypatch):
+    import app.routers.copilot as copilot_router
+
+    recorded = {}
+
+    async def fake_log_run(row):
+        recorded["row"] = row
+
+    monkeypatch.setattr(copilot_router, "log_run", fake_log_run)
+
+    app.dependency_overrides[get_copilot] = lambda: _FailingCopilot()
+    try:
+        resp = TestClient(app).post("/copilot/ask", json=_body())
+        assert resp.status_code == 502
+    finally:
+        app.dependency_overrides.pop(get_copilot, None)
+
+    assert "row" in recorded
+    assert recorded["row"]["error"] == "upstream boom"
+    assert recorded["row"]["answer"] == ""

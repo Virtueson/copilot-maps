@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from app.copilot import run_log
 from app.copilot.base import AskResult
 from app.models import ChatMessage, CopilotContext, LatLng, RouteSummary
@@ -65,10 +63,31 @@ class _RaisingClient:
         raise RuntimeError("network down")
 
 
+class _SpyClient:
+    def __init__(self):
+        self.called = False
+
+    async def post(self, *a, **k):
+        self.called = True
+        return _FakeResponse()
+
+
+class _FakeResponse:
+    def raise_for_status(self):
+        raise RuntimeError("500 server error")
+
+
+class _StatusErrorClient:
+    async def post(self, *a, **k):
+        return _FakeResponse()
+
+
 def test_log_run_noop_when_unconfigured(monkeypatch):
     # No SUPABASE_URL/KEY -> must not touch the client at all.
     monkeypatch.setattr(run_log, "get_settings", lambda: _FakeSettings("", ""))
-    asyncio.run(run_log.log_run({"session_id": "s"}, client=_RaisingClient()))  # no raise
+    spy = _SpyClient()
+    asyncio.run(run_log.log_run({"session_id": "s"}, client=spy))
+    assert spy.called is False
 
 
 def test_log_run_swallows_post_failure(monkeypatch):
@@ -76,6 +95,13 @@ def test_log_run_swallows_post_failure(monkeypatch):
     # Must swallow the RuntimeError, not propagate.
     asyncio.run(run_log.log_run({"session_id": "s", "turn_index": 1, "user_message": "hi"},
                                 client=_RaisingClient()))
+
+
+def test_log_run_swallows_http_status_error(monkeypatch):
+    monkeypatch.setattr(run_log, "get_settings", lambda: _FakeSettings("https://x", "key"))
+    # raise_for_status() raising must also be swallowed, not propagated.
+    asyncio.run(run_log.log_run({"session_id": "s", "turn_index": 1, "user_message": "hi"},
+                                client=_StatusErrorClient()))
 
 
 class _FakeSettings:

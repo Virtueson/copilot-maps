@@ -83,6 +83,30 @@ def test_openai_loop_runs_tool_then_returns_text():
     assert client.chat.completions.calls == 2
 
 
+def test_openai_loop_dedupes_repeated_tool_in_tools_used():
+    scripted = [
+        _Resp(choices=[_Choice(_Msg(content="Let me check.", tool_calls=[
+            _ToolCall(id="c1", function=_Func(name="search_places", arguments='{"query": "gas"}'))]))]),
+        _Resp(choices=[_Choice(_Msg(content="Checking more.", tool_calls=[
+            _ToolCall(id="c2", function=_Func(name="search_places", arguments='{"query": "gas2"}'))]))]),
+        _Resp(choices=[_Choice(_Msg(content="There's a Shell ahead."))]),
+    ]
+    client = _FakeClient(scripted)
+
+    async def fake_execute(name, args):
+        return "Found 1 place on the route: Shell"
+
+    result = asyncio.run(run_openai_agent_loop(
+        client=client, model="deepseek-v4-flash",
+        messages=[{"role": "user", "content": "gas?"}],
+        tools=[], execute_tool=fake_execute,
+    ))
+
+    assert result.tools_used == ["search_places"]
+    assert result.loop_count == 3
+    assert client.chat.completions.calls == 3
+
+
 def test_openai_loop_returns_text_without_tool():
     scripted = [_Resp(choices=[_Choice(_Msg(content="Take the expressway."))])]
     client = _FakeClient(scripted)

@@ -37,7 +37,8 @@ async def run_agent_loop(client, model, system, tools, messages, execute_tool, m
             tool_results = []
             for block in response.content:
                 if getattr(block, "type", None) == "tool_use":
-                    tools_used.append(block.name)
+                    if block.name not in tools_used:
+                        tools_used.append(block.name)
                     result = await execute_tool(block.name, block.input)
                     tool_results.append({
                         "type": "tool_result",
