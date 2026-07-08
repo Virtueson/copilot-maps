@@ -83,6 +83,8 @@ class CopilotContext(BaseModel):
 class CopilotAskRequest(BaseModel):
     messages: list[ChatMessage]
     context: CopilotContext
+    session_id: str | None = None
+    turn_index: int | None = None
 
 
 class CopilotAskResponse(BaseModel):

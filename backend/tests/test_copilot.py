@@ -98,3 +98,17 @@ def test_reply_language_english():
         assert resp.json()["language"] == "en"
     finally:
         app.dependency_overrides.pop(get_copilot, None)
+
+
+def test_ask_accepts_session_and_turn_and_still_returns_reply():
+    client = _client()  # _FixedCopilot, Supabase unconfigured
+    body = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "context": {"origin": {"lat": 1.0, "lng": 2.0}, "routes": []},
+        "session_id": "sess-1",
+        "turn_index": 0,
+    }
+    resp = client.post("/copilot/ask", json=body)
+    assert resp.status_code == 200
+    assert resp.json()["reply"] == "fixed reply about 0 routes"
+    assert set(resp.json().keys()) == {"reply", "language"}  # contract unchanged
