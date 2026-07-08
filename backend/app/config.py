@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     model_api: str = ""
     model_base_url: str = "https://ai.sumopod.com/v1"
     model_name: str = "deepseek-v4-flash"
+    supabase_url: str = ""
+    supabase_service_key: str = ""
 
 
 @lru_cache
