@@ -12,6 +12,7 @@ import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.voice.VoiceInput
 import com.virtueson.copilotmaps.voice.VoiceOutput
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,9 @@ class CopilotViewModel(
     private val _state = MutableStateFlow(CopilotUiState())
     val state: StateFlow<CopilotUiState> = _state.asStateFlow()
 
+    private val sessionId: String = UUID.randomUUID().toString()
+    private var turnIndex: Int = 0
+
     fun sendMessage(text: String, context: TripContext, speakReply: Boolean = false) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || _state.value.sending) return
@@ -35,9 +39,11 @@ class CopilotViewModel(
         val withUser = _state.value.messages + ChatMessage(Role.USER, trimmed)
         _state.value = _state.value.copy(messages = withUser, sending = true, error = null)
 
+        val turn = turnIndex
+        turnIndex += 1
         viewModelScope.launch {
             val history = withUser.takeLast(MAX_TURNS)
-            when (val result = repository.ask(history, context)) {
+            when (val result = repository.ask(history, context, sessionId, turn)) {
                 is CopilotResult.Success -> {
                     val replyLocale = AppLanguage.forTag(result.language)?.locale
                     _state.value = _state.value.copy(

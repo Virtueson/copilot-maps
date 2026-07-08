@@ -19,7 +19,12 @@ import org.junit.Rule
 import org.junit.Test
 
 private class FakeCopilotRepository(private val result: CopilotResult) : CopilotRepository {
-    override suspend fun ask(messages: List<ChatMessage>, context: TripContext): CopilotResult = result
+    override suspend fun ask(
+        messages: List<ChatMessage>,
+        context: TripContext,
+        sessionId: String,
+        turnIndex: Int,
+    ): CopilotResult = result
 }
 
 private val ctx = TripContext(GeoPoint(0.0, 0.0), null, emptyList())

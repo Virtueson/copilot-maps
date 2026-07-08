@@ -24,6 +24,8 @@ data class CopilotContextDto(
 data class CopilotAskRequestDto(
     val messages: List<ChatMessageDto>,
     val context: CopilotContextDto,
+    @Json(name = "session_id") val sessionId: String? = null,
+    @Json(name = "turn_index") val turnIndex: Int? = null,
 )
 
 data class CopilotAskResponseDto(

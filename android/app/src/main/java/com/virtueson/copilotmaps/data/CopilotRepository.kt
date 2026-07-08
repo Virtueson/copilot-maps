@@ -8,13 +8,23 @@ import com.virtueson.copilotmaps.network.LatLngDto
 import com.virtueson.copilotmaps.network.RouteSummaryDto
 
 interface CopilotRepository {
-    suspend fun ask(messages: List<ChatMessage>, context: TripContext): CopilotResult
+    suspend fun ask(
+        messages: List<ChatMessage>,
+        context: TripContext,
+        sessionId: String,
+        turnIndex: Int,
+    ): CopilotResult
 }
 
 class DefaultCopilotRepository(
     private val api: CopilotApi,
 ) : CopilotRepository {
-    override suspend fun ask(messages: List<ChatMessage>, context: TripContext): CopilotResult {
+    override suspend fun ask(
+        messages: List<ChatMessage>,
+        context: TripContext,
+        sessionId: String,
+        turnIndex: Int,
+    ): CopilotResult {
         return try {
             val response = api.ask(
                 CopilotAskRequestDto(
@@ -32,6 +42,8 @@ class DefaultCopilotRepository(
                             )
                         },
                     ),
+                    sessionId = sessionId,
+                    turnIndex = turnIndex,
                 )
             )
             CopilotResult.Success(response.reply, response.language)
