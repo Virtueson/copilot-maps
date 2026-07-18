@@ -158,11 +158,28 @@ against valid geometry. The nearby-fallback and truncation/count tests are
 unaffected in intent but may need coordinates updated so the along-route hit
 survives the filter.
 
+## Shared-function scope decision (added after final review)
+
+The filter lives in `search_with_fallback`, which is shared by the copilot
+tool **and** the `/places/search` HTTP endpoint that the Android Gas/Food
+quick-search buttons call. Placing the filter there therefore also filters the
+**map pins** those buttons drop during navigation to ahead-on-route — not just
+the copilot's spoken answer. This is intended and confirmed: during navigation
+the map now shows only places ahead on the route, consistent with the
+"only on my way" intent. No Android code changes, but the app's map behavior
+does change by design. (If map pins had needed to keep showing all along-route
+places, the filter would instead move up into the copilot tool
+`execute_search_places`.)
+
 ## Out of scope / non-goals
 
 - No polyline trimming or re-encoding (approach B).
 - No detour-cost / added-drive-time ranking (approach C).
 - No new dependency (`polyline` is already present).
-- No provider, router, prompt, or Android changes.
+- No changes to provider, router, prompt, or Android **source files**. (Per the
+  decision above, the shared `search_with_fallback` behavior change does
+  intentionally alter the `/places/search` endpoint's results and thus the
+  app's map pins during navigation — an app-visible change with no app code
+  change.)
 - Corridor width stays a module constant; env-var tuning is a trivial future
   addition if wanted, not part of this work.
