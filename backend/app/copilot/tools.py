@@ -5,15 +5,27 @@ from app.places.search import search_with_fallback
 
 _SEARCH_PLACES_DESCRIPTION = (
     "Find places such as gas stations, restaurants, ATMs, or any category on the "
-    "user's current route (or near them if no route is planned). Pass a natural "
-    "language query like 'gas station' or 'french restaurant'."
+    "user's current route (or near them if no route is planned). "
+    "Pass ONLY the place category as the query, e.g. 'gas station', 'coffee', or "
+    "'french restaurant'. Do NOT add road, street, route, city, area, or place "
+    "names — not even ones that appear in the trip context. The search is already "
+    "restricted to the driver's route and current location automatically; adding "
+    "location words to the query breaks it (it will search the wrong area)."
 )
+# Google returns up to 20 hits; only this many are shown to the LLM (the full list
+# still goes to the app for map pins).
+_MAX_PLACES_SHOWN = 5
+
 _SEARCH_PLACES_PARAMETERS = {
     "type": "object",
     "properties": {
         "query": {
             "type": "string",
-            "description": "What to search for, e.g. 'gas station' or 'coffee'.",
+            "description": (
+                "The place category ONLY, e.g. 'gas station' or 'coffee'. "
+                "No road, city, or area names — the route/location is applied "
+                "automatically."
+            ),
         }
     },
     "required": ["query"],
@@ -31,8 +43,11 @@ def _format_places(mode: str, places: list[Place]) -> str:
     if not places:
         return "No matching places found."
     where = "on the route" if mode == "along_route" else "nearby"
-    lines = [f"Found {len(places)} places {where}:"]
-    for p in places[:5]:
+    shown = places[:_MAX_PLACES_SHOWN]
+    # Report both counts: the model may only cite the places it can actually see,
+    # but the total still tells it whether such places are plentiful or scarce.
+    lines = [f"Found {len(places)} places {where}. Top {len(shown)}:"]
+    for p in shown:
         rating = f" {p.rating} stars" if p.rating is not None else ""
         lines.append(f"- {p.name}{rating} at {p.lat:.4f},{p.lng:.4f}")
     return "\n".join(lines)
