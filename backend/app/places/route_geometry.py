@@ -45,6 +45,11 @@ def _project(
     on the path, and the perpendicular distance from the point to that nearest
     point.
     """
+    # Limitation: on routes that double back within the corridor (U-turns,
+    # cloverleafs, or a divided highway traced as a single carriageway), a
+    # point can project to either leg; its along-track distance (hence
+    # ahead/behind and sort order) may then reflect the far leg. Acceptable
+    # for this personal-use app; noted as a known edge.
     scale = math.cos(math.radians(path[0][0]))
 
     def to_xy(la: float, ln: float) -> tuple[float, float]:

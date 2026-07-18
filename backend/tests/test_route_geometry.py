@@ -54,3 +54,10 @@ def test_passthrough_when_polyline_undecodable():
     # so filtering is skipped and the input is returned unchanged.
     p = _place("Anything", 9.9, 9.9)
     assert _names(filter_ahead_on_route(ORIGIN, "abc", [p])) == ["Anything"]
+
+
+def test_corridor_override_widens_acceptance():
+    # ~2.2 km off to the side: dropped at the default 1 km corridor, kept at 3 km.
+    off = _place("Off", 0.02, 0.06)
+    assert filter_ahead_on_route(ORIGIN, ROUTE, [off]) == []
+    assert _names(filter_ahead_on_route(ORIGIN, ROUTE, [off], corridor_m=3000)) == ["Off"]

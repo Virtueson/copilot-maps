@@ -1,3 +1,4 @@
+import polyline
 from fastapi.testclient import TestClient
 
 from app.config import get_places_provider
@@ -19,6 +20,15 @@ class _FakeProvider:
 
 def _place(name: str) -> Place:
     return Place(id=name, name=name, lat=1.0, lng=2.0)
+
+
+# A real, decodable west->east line along the equator: (0,0) -> (0,0.1).
+# An origin partway along it makes "ahead vs behind" meaningful.
+ROUTE = polyline.encode([(0.0, 0.0), (0.0, 0.1)])
+
+
+def _at(name: str, lat: float, lng: float) -> Place:
+    return Place(id=name, name=name, lat=lat, lng=lng)
 
 
 def _client(along: list[Place], near: list[Place]) -> TestClient:
@@ -95,3 +105,28 @@ def test_google_to_place_tolerates_missing_price_and_hours():
                    "location": {"latitude": 0.0, "longitude": 0.0}})
     assert p.price_level is None
     assert p.open_now is None
+
+
+def test_along_route_filters_out_behind_places():
+    # Origin sits ~2.2 km along ROUTE; "Behind" (~1.1 km) is before it and must
+    # be dropped, "Ahead" (~5.6 km) is past it and must be kept.
+    behind = _at("Behind", 0.0, 0.01)
+    ahead = _at("Ahead", 0.0, 0.05)
+    client = _client(along=[behind, ahead], near=[])
+    body = {"query": "gas station", "origin": {"lat": 0.0, "lng": 0.02}, "polyline": ROUTE}
+    resp = client.post("/places/search", json=body)
+    data = resp.json()
+    assert data["mode"] == "along_route"
+    assert [p["name"] for p in data["places"]] == ["Ahead"]
+
+
+def test_along_route_all_behind_falls_back_to_nearby():
+    # Every along-route hit is behind the driver -> filter empties the list ->
+    # the existing nearby fallback fires and the endpoint reports mode "nearby".
+    behind = _at("Behind", 0.0, 0.01)
+    client = _client(along=[behind], near=[_at("Near", 0.0, 0.0)])
+    body = {"query": "gas station", "origin": {"lat": 0.0, "lng": 0.02}, "polyline": ROUTE}
+    resp = client.post("/places/search", json=body)
+    data = resp.json()
+    assert data["mode"] == "nearby"
+    assert [p["name"] for p in data["places"]] == ["Near"]
