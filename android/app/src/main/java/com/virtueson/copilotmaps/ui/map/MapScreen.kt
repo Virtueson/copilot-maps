@@ -537,18 +537,6 @@ private fun RoutingMap(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
-
-                Surface(tonalElevation = 3.dp) {
-                    Row(
-                        modifier = Modifier.padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Button(onClick = { onSearchPlaces(PlaceCategory.GAS) }) { Text("Gas") }
-                        Button(onClick = { onSearchPlaces(PlaceCategory.FOOD) }) { Text("Food") }
-                        OutlinedButton(onClick = onClearPlaces) { Text("Clear") }
-                    }
-                }
                 val banner: String? = when {
                     placesState is PlacesState.Loading -> "Searching…"
                     placesState is PlacesState.Error -> placesState.message
@@ -607,13 +595,23 @@ private fun RoutingMap(
             )
         }
 
-        if (!following) {
-            FloatingActionButton(
-                onClick = { following = true },
+        val hasPins = placesState is PlacesState.Loaded &&
+            (placesState as PlacesState.Loaded).places.isNotEmpty()
+        if (hasPins || !following) {
+            Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
-            ) { Text("◎") }
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (hasPins) {
+                    FloatingActionButton(onClick = onClearPlaces) { Text("🗑") }
+                }
+                if (!following) {
+                    FloatingActionButton(onClick = { following = true }) { Text("◎") }
+                }
+            }
         }
 
         if (showChat) {
