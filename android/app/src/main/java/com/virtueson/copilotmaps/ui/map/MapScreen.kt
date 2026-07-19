@@ -145,6 +145,13 @@ fun MapScreen(modifier: Modifier = Modifier) {
     val placesState by placesViewModel.state.collectAsStateWithLifecycle()
     val searchState by searchViewModel.state.collectAsStateWithLifecycle()
     val copilotState by copilotViewModel.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        copilotViewModel.placeResults.collect { places ->
+            placesViewModel.showResults(places)
+        }
+    }
+
     val locationSample by mapViewModel.location.collectAsStateWithLifecycle()
 
     val navViewModel: NavViewModel = viewModel(

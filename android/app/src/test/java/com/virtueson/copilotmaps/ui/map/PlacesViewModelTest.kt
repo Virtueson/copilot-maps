@@ -86,4 +86,16 @@ class PlacesViewModelTest {
 
         assertTrue(vm.state.value is PlacesState.Idle)
     }
+
+    @Test
+    fun `showResults sets Loaded with the given places`() = runTest {
+        val vm = PlacesViewModel(FakePlacesRepository(PlacesResult.Success(emptyList(), "nearby")))
+
+        vm.showResults(listOf(place("Shell"), place("Pertamina")))
+
+        val state = vm.state.value
+        state as PlacesState.Loaded
+        assertEquals(listOf("Shell", "Pertamina"), state.places.map { it.name })
+        assertFalse(state.fellBackToNearby)
+    }
 }

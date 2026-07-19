@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.virtueson.copilotmaps.data.GeoPoint
+import com.virtueson.copilotmaps.data.Place
 import com.virtueson.copilotmaps.data.PlacesRepository
 import com.virtueson.copilotmaps.data.PlacesResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,11 @@ class PlacesViewModel(
                 is PlacesResult.Failure -> PlacesState.Error(result.reason)
             }
         }
+    }
+
+    /** Show an externally-produced result set (e.g. from the copilot) as pins. */
+    fun showResults(places: List<Place>) {
+        _state.value = PlacesState.Loaded(places = places, fellBackToNearby = false)
     }
 
     fun clear() {

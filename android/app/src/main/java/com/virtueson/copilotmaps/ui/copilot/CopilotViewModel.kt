@@ -7,14 +7,18 @@ import com.virtueson.copilotmaps.data.AppLanguage
 import com.virtueson.copilotmaps.data.ChatMessage
 import com.virtueson.copilotmaps.data.CopilotRepository
 import com.virtueson.copilotmaps.data.CopilotResult
+import com.virtueson.copilotmaps.data.Place
 import com.virtueson.copilotmaps.data.Role
 import com.virtueson.copilotmaps.data.TripContext
 import com.virtueson.copilotmaps.voice.VoiceInput
 import com.virtueson.copilotmaps.voice.VoiceOutput
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -28,6 +32,9 @@ class CopilotViewModel(
 
     private val _state = MutableStateFlow(CopilotUiState())
     val state: StateFlow<CopilotUiState> = _state.asStateFlow()
+
+    private val _placeResults = MutableSharedFlow<List<Place>>(extraBufferCapacity = 1)
+    val placeResults: SharedFlow<List<Place>> = _placeResults.asSharedFlow()
 
     private val sessionId: String = UUID.randomUUID().toString()
     private var turnIndex: Int = 0
@@ -50,6 +57,9 @@ class CopilotViewModel(
                         messages = _state.value.messages + ChatMessage(Role.ASSISTANT, result.reply),
                         sending = false,
                     )
+                    if (result.places.isNotEmpty()) {
+                        _placeResults.tryEmit(result.places)
+                    }
                     if (speakReply && _state.value.ttsEnabled) {
                         _state.value = _state.value.copy(speaking = true)
                         voiceOutput.speak(result.reply, locale = replyLocale) {
