@@ -1,7 +1,13 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import copilot, places, routes
+
+# Uvicorn only configures its own loggers, so app loggers ("copilot.*") need a
+# root handler or their INFO records are dropped.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Copilot Maps Backend")
 

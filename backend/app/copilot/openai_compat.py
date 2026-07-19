@@ -8,6 +8,7 @@ needs no change here.
 """
 
 import json
+import logging
 from dataclasses import replace
 
 import openai
@@ -17,6 +18,8 @@ from app.copilot.prompt import PERSONA, format_context
 from app.copilot.registry import TurnOutputs, dispatch, to_openai_tools
 from app.copilot.tools import build_tools
 from app.models import ChatMessage, CopilotContext
+
+logger = logging.getLogger("copilot.loop")
 
 _MAX_TOKENS = 1024
 _MAX_ITERATIONS = 5
@@ -42,6 +45,12 @@ async def run_openai_agent_loop(
         )
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None)
+        logger.info(
+            "iteration=%d tool_calls=%d%s",
+            loops,
+            len(tool_calls or []),
+            "" if tool_calls else f" -> answered: {(message.content or '')[:120]!r}",
+        )
         if tool_calls:
             convo.append({
                 "role": "assistant",
@@ -65,7 +74,9 @@ async def run_openai_agent_loop(
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
+                logger.info("  -> call %s(%s)", tc.function.name, args)
                 result = await execute_tool(tc.function.name, args)
+                logger.info("  <- result: %s", result.replace("\n", " | "))
                 convo.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
