@@ -90,3 +90,5 @@ class CopilotAskRequest(BaseModel):
 class CopilotAskResponse(BaseModel):
     reply: str
     language: str = "en"
+    places: list[Place] = []
+    navigation: Place | None = None

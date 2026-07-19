@@ -43,4 +43,9 @@ async def copilot_ask(
         answer_language=language, model=settings.model_name,
         provider=settings.copilot_provider, latency_ms=latency_ms, error=None,
     ))
-    return CopilotAskResponse(reply=result.reply, language=language)
+    return CopilotAskResponse(
+        reply=result.reply,
+        language=language,
+        places=result.places,
+        navigation=result.navigation,
+    )

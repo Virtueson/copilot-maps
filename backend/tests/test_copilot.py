@@ -111,7 +111,7 @@ def test_ask_accepts_session_and_turn_and_still_returns_reply():
     resp = client.post("/copilot/ask", json=body)
     assert resp.status_code == 200
     assert resp.json()["reply"] == "fixed reply about 0 routes"
-    assert set(resp.json().keys()) == {"reply", "language"}  # contract unchanged
+    assert set(resp.json().keys()) == {"reply", "language", "places", "navigation"}  # contract updated to include places/navigation
 
 
 class _FailingCopilot:
@@ -139,3 +139,30 @@ def test_copilot_ask_error_path_logs_run(monkeypatch):
     assert "row" in recorded
     assert recorded["row"]["error"] == "upstream boom"
     assert recorded["row"]["answer"] == ""
+
+
+def test_response_includes_search_places():
+    """Places from the copilot result must reach the HTTP response for map pins."""
+    from app.copilot.base import AskResult
+    from app.models import Place
+
+    place = Place(id="p1", name="Shell Tendean", lat=-6.24, lng=106.82, rating=4.3)
+
+    class _PlacesCopilot:
+        async def ask(self, messages, context):
+            return AskResult(reply="There are gas stations ahead.", places=[place])
+
+    app.dependency_overrides[get_copilot] = lambda: _PlacesCopilot()
+    try:
+        client = TestClient(app)
+        body = {
+            "messages": [{"role": "user", "content": "any gas"}],
+            "context": {"origin": {"lat": -6.24, "lng": 106.82}},
+        }
+        data = client.post("/copilot/ask", json=body).json()
+    finally:
+        app.dependency_overrides.pop(get_copilot, None)
+
+    assert data["reply"] == "There are gas stations ahead."
+    assert [p["name"] for p in data["places"]] == ["Shell Tendean"]
+    assert data["navigation"] is None
