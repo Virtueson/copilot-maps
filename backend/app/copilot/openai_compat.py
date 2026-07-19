@@ -8,12 +8,13 @@ needs no change here.
 """
 
 import json
+from dataclasses import replace
 
 import openai
 
 from app.copilot.base import CopilotError, AskResult
 from app.copilot.prompt import PERSONA, format_context
-from app.copilot.registry import dispatch, to_openai_tools
+from app.copilot.registry import TurnOutputs, dispatch, to_openai_tools
 from app.copilot.tools import build_tools
 from app.models import ChatMessage, CopilotContext
 
@@ -82,14 +83,16 @@ class OpenAICompatCopilot:
         self._client = client or openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> AskResult:
+        outputs = TurnOutputs()
+
         async def execute(name: str, args: dict) -> str:
-            return await dispatch(self._tools, name, args, context)
+            return await dispatch(self._tools, name, args, context, outputs)
 
         convo = [_system_message(context)] + [
             {"role": m.role, "content": m.content} for m in messages
         ]
         try:
-            return await run_openai_agent_loop(
+            result = await run_openai_agent_loop(
                 client=self._client,
                 model=self._model,
                 messages=convo,
@@ -98,3 +101,4 @@ class OpenAICompatCopilot:
             )
         except openai.OpenAIError as exc:
             raise CopilotError(str(exc)) from exc
+        return replace(result, places=outputs.places, navigation=outputs.navigation)

@@ -54,11 +54,16 @@ def _format_places(mode: str, places: list[Place]) -> str:
 
 
 async def execute_search_places(
-    query: str, context: CopilotContext, places_provider: PlacesProvider
+    query: str,
+    context: CopilotContext,
+    places_provider: PlacesProvider,
+    outputs=None,
 ) -> str:
     mode, places = await search_with_fallback(
         places_provider, query, context.origin, context.selected_route_polyline
     )
+    if outputs is not None:
+        outputs.places = list(places)
     return _format_places(mode, places)
 
 
@@ -69,9 +74,9 @@ def build_tools(places_provider: PlacesProvider) -> list[Tool]:
     providers (OpenAI-compatible and Anthropic-native) pick it up automatically.
     """
 
-    async def _search_places(args: dict, context: CopilotContext) -> str:
+    async def _search_places(args: dict, context: CopilotContext, outputs) -> str:
         return await execute_search_places(
-            args.get("query", ""), context, places_provider
+            args.get("query", ""), context, places_provider, outputs
         )
 
     return [

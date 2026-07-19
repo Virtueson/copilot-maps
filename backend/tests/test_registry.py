@@ -1,6 +1,6 @@
 import asyncio
 
-from app.copilot.registry import Tool, dispatch, to_anthropic_tools, to_openai_tools
+from app.copilot.registry import Tool, TurnOutputs, dispatch, to_anthropic_tools, to_openai_tools
 from app.models import CopilotContext, LatLng
 
 
@@ -8,7 +8,7 @@ def _ctx():
     return CopilotContext(origin=LatLng(lat=1.0, lng=2.0))
 
 
-async def _echo(args, context):
+async def _echo(args, context, outputs):
     return f"ran with {args.get('q')}"
 
 
@@ -35,10 +35,10 @@ def test_anthropic_format():
 
 
 def test_dispatch_runs_named_tool():
-    result = asyncio.run(dispatch([_tool()], "demo", {"q": "hi"}, _ctx()))
+    result = asyncio.run(dispatch([_tool()], "demo", {"q": "hi"}, _ctx(), TurnOutputs()))
     assert result == "ran with hi"
 
 
 def test_dispatch_unknown_tool():
-    result = asyncio.run(dispatch([_tool()], "missing", {}, _ctx()))
+    result = asyncio.run(dispatch([_tool()], "missing", {}, _ctx(), TurnOutputs()))
     assert "Unknown tool" in result

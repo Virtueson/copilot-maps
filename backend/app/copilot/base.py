@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from app.models import ChatMessage, CopilotContext
+from app.models import ChatMessage, CopilotContext, Place
 
 
 class CopilotError(Exception):
@@ -13,6 +13,8 @@ class AskResult:
     reply: str
     tools_used: list[str] = field(default_factory=list)
     loop_count: int = 0
+    places: list[Place] = field(default_factory=list)
+    navigation: Place | None = None
 
 
 class CopilotProvider(Protocol):

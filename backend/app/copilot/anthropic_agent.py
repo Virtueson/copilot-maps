@@ -1,8 +1,10 @@
+from dataclasses import replace
+
 import anthropic
 
 from app.copilot.base import CopilotError, AskResult
 from app.copilot.prompt import PERSONA, format_context
-from app.copilot.registry import dispatch, to_anthropic_tools
+from app.copilot.registry import TurnOutputs, dispatch, to_anthropic_tools
 from app.copilot.tools import build_tools
 from app.models import ChatMessage, CopilotContext
 
@@ -60,12 +62,14 @@ class AnthropicCopilot:
         self._client = client or anthropic.AsyncAnthropic(api_key=api_key)
 
     async def ask(self, messages: list[ChatMessage], context: CopilotContext) -> AskResult:
+        outputs = TurnOutputs()
+
         async def execute(name: str, tool_input: dict) -> str:
-            return await dispatch(self._tools, name, tool_input, context)
+            return await dispatch(self._tools, name, tool_input, context, outputs)
 
         convo = [{"role": m.role, "content": m.content} for m in messages]
         try:
-            return await run_agent_loop(
+            result = await run_agent_loop(
                 client=self._client,
                 model=_MODEL,
                 system=_system_blocks(context),
@@ -75,3 +79,4 @@ class AnthropicCopilot:
             )
         except anthropic.AnthropicError as exc:
             raise CopilotError(str(exc)) from exc
+        return replace(result, places=outputs.places, navigation=outputs.navigation)

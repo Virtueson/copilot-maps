@@ -6,13 +6,27 @@ its own wire format and dispatches calls by name. To add a capability, append on
 `Tool` in `build_tools()` — no provider or agent-loop code needs to change.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
-from app.models import CopilotContext
+from app.models import CopilotContext, Place
 
-# An executor receives the parsed tool arguments + the current trip context.
-ToolExecutor = Callable[[dict, CopilotContext], Awaitable[str]]
+
+@dataclass
+class TurnOutputs:
+    """Structured side-outputs a tool can emit during one /copilot/ask turn.
+
+    Executors return text for the LLM to read; anything the *app* needs (map
+    pins, a resolved navigation target) is written here and copied into the
+    AskResult after the agent loop.
+    """
+
+    places: list[Place] = field(default_factory=list)
+    navigation: Place | None = None
+
+
+# An executor receives parsed args + the trip context + the turn's outputs sink.
+ToolExecutor = Callable[[dict, CopilotContext, TurnOutputs], Awaitable[str]]
 
 
 @dataclass(frozen=True)
@@ -51,10 +65,14 @@ def to_anthropic_tools(tools: list[Tool]) -> list[dict]:
 
 
 async def dispatch(
-    tools: list[Tool], name: str, args: dict, context: CopilotContext
+    tools: list[Tool],
+    name: str,
+    args: dict,
+    context: CopilotContext,
+    outputs: TurnOutputs,
 ) -> str:
     """Run the executor for `name`, or report an unknown tool."""
     for tool in tools:
         if tool.name == name:
-            return await tool.executor(args, context)
+            return await tool.executor(args, context, outputs)
     return f"Unknown tool: {name}"
