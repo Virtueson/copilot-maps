@@ -31,4 +31,6 @@ data class CopilotAskRequestDto(
 data class CopilotAskResponseDto(
     val reply: String,
     val language: String? = null,
+    val places: List<PlaceDto> = emptyList(),
+    val navigation: PlaceDto? = null,
 )

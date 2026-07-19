@@ -46,7 +46,12 @@ class DefaultCopilotRepository(
                     turnIndex = turnIndex,
                 )
             )
-            CopilotResult.Success(response.reply, response.language)
+            CopilotResult.Success(
+                reply = response.reply,
+                language = response.language,
+                places = response.places.map { it.toPlace() },
+                navigation = response.navigation?.toPlace(),
+            )
         } catch (e: Exception) {
             CopilotResult.Failure("Can't reach the server — is the backend running and adb reverse set?")
         }
