@@ -35,7 +35,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -346,6 +345,7 @@ private fun RoutingMap(
     val searchScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     var showChat by remember { mutableStateOf(false) }
+    var selectedPlace by remember { mutableStateOf<Place?>(null) }
 
     val navActive = navState is NavUiState.Active
     LaunchedEffect(navActive) { if (navActive) following = true }
@@ -437,6 +437,10 @@ private fun RoutingMap(
                         title = place.name,
                         snippet = placeSnippet(place),
                         icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE),
+                        onClick = {
+                            selectedPlace = place
+                            true  // consume: show our own card, not the native bubble
+                        },
                     )
                 }
             }
@@ -624,6 +628,36 @@ private fun RoutingMap(
             )
         }
 
+        selectedPlace?.let { place ->
+            PlaceDetailCard(
+                place = place,
+                distanceMeters = haversineMeters(origin, place.location).toInt(),
+                onDismiss = { selectedPlace = null },
+                onDirections = {
+                    val dest = LatLng(place.location.lat, place.location.lng)
+                    following = false
+                    if (navState is NavUiState.Active) onEndNav()
+                    destination = dest
+                    onPlan(place.location)
+                    selectedPlace = null
+                    searchScope.launch {
+                        val bounds = LatLngBounds.builder()
+                            .include(LatLng(origin.lat, origin.lng))
+                            .include(dest)
+                            .build()
+                        try {
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngBounds(bounds, 120), 1000,
+                            )
+                        } catch (_: Exception) {
+                            // map not ready; ignore
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
     }
 }
 
@@ -797,6 +831,40 @@ private fun SearchResultRow(place: Place, distanceMeters: Int, onClick: () -> Un
         }
         Text(bits.joinToString(" · "))
         place.address?.let { Text(it, fontSize = 12.sp) }
+    }
+}
+
+@Composable
+private fun PlaceDetailCard(
+    place: Place,
+    distanceMeters: Int,
+    onDismiss: () -> Unit,
+    onDirections: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .fillMaxWidth()
+            .padding(12.dp),
+        tonalElevation = 6.dp,
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(place.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("✕") }
+            }
+            val bits = buildList {
+                place.rating?.let { add("★$it") }
+                priceSymbol(place.priceLevel).takeIf { it.isNotEmpty() }?.let { add(it) }
+                place.openNow?.let { add(if (it) "Open now" else "Closed") }
+                add(formatDistance(distanceMeters))
+            }
+            Text(bits.joinToString(" · "))
+            place.address?.let { Text(it, fontSize = 12.sp) }
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onDirections) { Text("Directions") }
+        }
     }
 }
 
