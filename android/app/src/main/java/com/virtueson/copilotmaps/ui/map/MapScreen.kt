@@ -610,7 +610,7 @@ private fun RoutingMap(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (hasPins) {
-                    FloatingActionButton(onClick = onClearPlaces) { Text("🗑") }
+                    FloatingActionButton(onClick = { onClearPlaces(); selectedPlace = null }) { Text("🗑") }
                 }
                 if (!following) {
                     FloatingActionButton(onClick = { following = true }) { Text("◎") }

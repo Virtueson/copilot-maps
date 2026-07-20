@@ -27,8 +27,6 @@ def _place(name):
 
 
 def test_dispatch_passes_outputs_to_executor():
-    hits = []
-
     async def _exec(args, context, outputs):
         outputs.places = [_place("X")]
         return "ok"
