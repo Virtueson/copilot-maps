@@ -46,10 +46,13 @@ def _format_places(mode: str, places: list[Place]) -> str:
     shown = places[:_MAX_PLACES_SHOWN]
     # Report both counts: the model may only cite the places it can actually see,
     # but the total still tells it whether such places are plentiful or scarce.
+    # No coordinates: the list is already nearest-first, the model never needs
+    # lat/lng (it would only read them aloud), and the app gets real coordinates
+    # via the structured places list.
     lines = [f"Found {len(places)} places {where}. Top {len(shown)}:"]
     for p in shown:
         rating = f" {p.rating} stars" if p.rating is not None else ""
-        lines.append(f"- {p.name}{rating} at {p.lat:.4f},{p.lng:.4f}")
+        lines.append(f"- {p.name}{rating}")
     return "\n".join(lines)
 
 

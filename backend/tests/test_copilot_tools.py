@@ -87,3 +87,17 @@ def test_untruncated_results_report_the_real_count():
     result = asyncio.run(execute_search_places("gas station", _ctx(), provider))
 
     assert result.startswith("Found 2 places on the route. Top 2:")
+
+
+def test_result_text_omits_coordinates():
+    """The model-facing text must not include lat/lng: coordinates tempt the
+    model to read them aloud (e.g. to disambiguate same-named places), and the
+    app already gets real coordinates via the structured places list."""
+    provider = _FakeProvider(along=[_place("OnRoute")], near=[])
+
+    result = asyncio.run(execute_search_places("gas station", _ctx(), provider))
+
+    assert "OnRoute" in result
+    assert "4.5 stars" in result
+    assert " at " not in result
+    assert "0.0500" not in result and "0.0000" not in result
