@@ -6,6 +6,10 @@ from app.places.search import search_with_fallback
 _SEARCH_PLACES_DESCRIPTION = (
     "Find places such as gas stations, restaurants, ATMs, or any category on the "
     "user's current route (or near them if no route is planned). "
+    "Call this EVERY time the user asks to find or locate places — even if you "
+    "already searched earlier in the conversation — because the route and the "
+    "driver's position keep changing as they drive; never answer a place request "
+    "from earlier results or memory. "
     "Pass ONLY the place category as the query, e.g. 'gas station', 'coffee', or "
     "'french restaurant'. Do NOT add road, street, route, city, area, or place "
     "names — not even ones that appear in the trip context. The search is already "
